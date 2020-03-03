@@ -90,7 +90,9 @@ def fitness_network(x, y, converted_parameters):
     first_layer_biases = converted_parameters[3]
     second_layer_biases = converted_parameters[4]
     third_layer_biases = converted_parameters[5]
-    y_pred = list()
+
+    log_loss_result = np.zeros(POP_SIZE)
+    y_true = np.broadcast_to(y, (POP_SIZE, *y.shape))
     for start_idx in range(0, x.shape[0], BATCH_SIZE):
         x_batch = x[start_idx:start_idx + BATCH_SIZE]
         # No need to add a dimension to x, implicit broadcasting
@@ -102,14 +104,12 @@ def fitness_network(x, y, converted_parameters):
         z2 = expit(z2)
         z3 = np.matmul(z2, third_layer_weights) + third_layer_biases
         y3 = expit(z3)
-        y_pred.append(y3)
+        for i in range(len(y3)):
+            log_loss_result[i] += log_loss(y_true[i][start_idx:start_idx + BATCH_SIZE], y3[i])
     # axis=1, 0 is population size.
     # Now it works even if the number of instances is not divisible
     # by the size of the minibatch.
-    y_pred = np.concatenate(y_pred, axis=1)
-    y_true = np.broadcast_to(y, (y_pred.shape[0], *y.shape))
-    return [1 / log_loss(y_true[i], y_pred[i])
-           for i in range(y_pred.shape[0])]
+    return 1 / (log_loss_result / y_true.shape[1])
 
 
 # In[173]:
@@ -134,9 +134,9 @@ def prepare_individual_for_network(individual):
 # In[174]:
 
 
-def selection(population, train_set):
+def selection(population, x_train, y_train):
     new_population = list()
-    individual_fitness = [fitness_network(train_set, *prepare_individual_for_network(ind)) for ind in population]
+    individual_fitness = [fitness_network(x_train, y_train, *prepare_individual_for_network(ind)) for ind in population]
     total_fitness = sum(individual_fitness)
     individual_probabilities = [ind_fitness / total_fitness for ind_fitness in individual_fitness]
     cumulative_probabilities = [0]
@@ -159,17 +159,18 @@ def selection(population, train_set):
 
 def upgrade(population):
     for individual in population:
-        for b in range(len(individual)):
-            new_bit_array = ''
-            for bit in individual[b]:
-                if random.uniform(0, 1) < MUTATION_PROB:
-                    if bit == '1':
-                        new_bit_array += '0'
+        for row in individual:
+            for b in range(len(row)):
+                new_bit_array = ''
+                for bit in individual[b]:
+                    if random.uniform(0, 1) < MUTATION_PROB:
+                        if bit == '1':
+                            new_bit_array += '0'
+                        else:
+                            new_bit_array += '1'
                     else:
-                        new_bit_array += '1'
-                else:
-                    new_bit_array += bit
-            individual[b] = new_bit_array
+                        new_bit_array += bit
+                individual[b] = new_bit_array
 
     cross_over_indexes = [i for i in range(POP_SIZE) if random.uniform(0, 1) < 0.6]
     if len(cross_over_indexes) % 2 != 0:
@@ -177,6 +178,7 @@ def upgrade(population):
     for i in range(0, len(cross_over_indexes), 2):
         first_child = list()
         second_child = list()
+        # TODO: Reimplementation with the new data structure
         for k in range(len(population[cross_over_indexes[i]])):
             bit_array_length = len(population[cross_over_indexes[i]][k])
             r = random.randint(0, bit_array_length - 1)
@@ -273,10 +275,10 @@ def main():
         x_test, y_test = test_set
     #best = 0
     population = generate_population()
-    best, best_individual = evaluate_population(train_set, population)
+    best, best_individual = evaluate_population(x_train, y_train, population)
     for i in range(NR_EPOCHS):
         print(f'Current epoch: {i}')
-        population = selection(population, train_set)
+        population = selection(population, x_train, y_train)
         population = list(upgrade(population))
         new_best, new_best_individual = evaluate_population(x_train, y_train, population)
         if new_best > best:
@@ -293,18 +295,11 @@ def main():
 # In[180]:
 
 
-with gzip.open('mnist.pkl.gz', 'rb') as f:
-    train_set, valid_set, test_set = pickle.load(f, encoding='latin1')
-    x_train, y_train = train_set
-    x_valid, y_valid = valid_set
-    x_test, y_test = test_set
-population = generate_population()
-
 
 # In[181]:
 
 
-get_ipython().run_line_magic('load_ext', 'line_profiler')
+# get_ipython().run_line_magic('load_ext', 'line_profiler')
 
 
 # In[182]:
@@ -317,42 +312,42 @@ get_ipython().run_line_magic('load_ext', 'line_profiler')
 # In[26]:
 
 
-A1 = np.random.randint(1, high=5, size=(30, 256, 768))
-B1 = np.random.randint(1, high=5, size=(30, 768, 100))
-A2 = np.random.randint(1, high=5, size=(30, 256, 768))
-B2 = np.random.randint(1, high=5, size=(30, 768, 100))
-#B2 = np.asfortranarray(B2)
-
-print('A1')
-print(A1.flags)
-print('B1')
-print(B1.flags)
-print('A2')
-print(A2.flags)
-print('B2')
-print(B2.flags)
+# A1 = np.random.randint(1, high=5, size=(30, 256, 768))
+# B1 = np.random.randint(1, high=5, size=(30, 768, 100))
+# A2 = np.random.randint(1, high=5, size=(30, 256, 768))
+# B2 = np.random.randint(1, high=5, size=(30, 768, 100))
+# #B2 = np.asfortranarray(B2)
+#
+# print('A1')
+# print(A1.flags)
+# print('B1')
+# print(B1.flags)
+# print('A2')
+# print(A2.flags)
+# print('B2')
+# print(B2.flags)
 
 
 # In[22]:
 
 
-get_ipython().run_line_magic('timeit', 'np.matmul(A1, B1)')
+# get_ipython().run_line_magic('timeit', 'np.matmul(A1, B1)')
 
 
 # In[27]:
 
 
-get_ipython().run_cell_magic('timeit', '', 'global B2, A2\nA2 = np.asfortranarray(A2)\n#B2 = np.asfortranarray(B2)\nnp.matmul(A2, B2)')
+# get_ipython().run_cell_magic('timeit', '', 'global B2, A2\nA2 = np.asfortranarray(A2)\n#B2 = np.asfortranarray(B2)\nnp.matmul(A2, B2)')
 
 
 # In[30]:
 
 
-M1 = np.apply_along_axis(''.join,
-                         1,
-                         np.random.choice(['0', '1'], size=(POP_SIZE, BITS_NR, 784, 100)))
-uint32_limit = np.iinfo(np.uint32).max
-M2 = np.random.randint(0, high=uint32_limit, size=(POP_SIZE, 784, 100))
+# M1 = np.apply_along_axis(''.join,
+#                          1,
+#                          np.random.choice(['0', '1'], size=(POP_SIZE, BITS_NR, 784, 100)))
+# uint32_limit = np.iinfo(np.uint32).max
+# M2 = np.random.randint(0, high=uint32_limit, size=(POP_SIZE, 784, 100))
 
 
 # In[33]:
@@ -380,16 +375,16 @@ def mutate_one(M):
 def mutate_two(M):
     pass
 
-mat = np.array([0xF, 0xFF, 0X43])
-a = np.bitwise_and(mat[:, np.newaxis], BIT_TABLE) != 0
-p = np.random.rand(*mat.shape)
-print(a)
+# mat = np.array([0xF, 0xFF, 0X43])
+# a = np.bitwise_and(mat[:, np.newaxis], BIT_TABLE) != 0
+# p = np.random.rand(*mat.shape)
+# print(a)
 
 
 # In[60]:
 
 
-get_ipython().run_line_magic('timeit', 'mutate_one(M1)')
+# get_ipython().run_line_magic('timeit', 'mutate_one(M1)')
 
 
 # In[ ]:
@@ -404,3 +399,11 @@ get_ipython().run_line_magic('timeit', 'mutate_one(M1)')
 # %timeit mutate(M2) (uint32 and bit-twiddling)
 # %timeit mutate(M2) (use Cython)
 
+if __name__ == '__main__':
+    with gzip.open('mnist.pkl.gz', 'rb') as f:
+        train_set, valid_set, test_set = pickle.load(f, encoding='latin1')
+        x_train, y_train = train_set
+        x_valid, y_valid = valid_set
+        x_test, y_test = test_set
+    population = generate_population()
+    evaluate_population(x_train, y_train, population)
