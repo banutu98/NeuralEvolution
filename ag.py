@@ -14,8 +14,6 @@ NR_EPOCHS = 20
 POP_SIZE = 30
 HIGHER_BOUND = 10
 LOWER_BOUND = -10
-# The final result is 18 bits. Couldn't we use 32 bit unsigned
-# integers instead? It could be faster, but not sure...
 INTERVALS_NR = (HIGHER_BOUND - LOWER_BOUND) * 10 ** 4
 BITS_NR = math.ceil(np.log2(INTERVALS_NR))
 MUTATION_PROB = 0.03
@@ -30,8 +28,8 @@ def convert_bits(bits, indices):
 
 def convert(M):
     convert_bits_vect = np.vectorize(convert_bits,
-                                    otypes=[np.uint32],
-                                    signature='(m,n),(n)->(m)')
+                                     otypes=[np.uint32],
+                                     signature='(m,n),(n)->(m)')
     result = convert_bits_vect(M, IDXS) / (2**BITS_NR-1)
     return result * (HIGHER_BOUND - LOWER_BOUND) + LOWER_BOUND 
 
@@ -87,7 +85,8 @@ def mutate(M):
                     1-M,
                     M)
 
-def crossover(M):
+
+def crossover(M, cross_percentages):
     def swap_weights(M, i1, i2):
         n_pop = len(i1)
         i = np.random.randint(M.shape[1], size=(n_pop,))
@@ -141,30 +140,27 @@ def crossover(M):
     shuffled_indices = np.random.choice(cross_indices,
                                         size=cross_indices.size,
                                         replace=False)
-    weights, neurons, layers = split_perc(shuffled_indices, [.3, .3, .4])
+    weights, neurons, layers = split_perc(shuffled_indices, cross_percentages)
     swap_weights(M, *np.split(weights, 2))
     swap_neurons(M, *np.split(neurons, 2))
     swap_layers(M, *np.split(layers, 2))
 
 
-def upgrade(population):
+def upgrade(population, cross_percentages=[.3, .3, .4]):
     new_population = []
     for i in range(len(population)):
         layer = population[i]
         layer_new = mutate(layer)
         # This function modifies the matrix in-place
-        crossover(layer_new)
+        crossover(layer_new, cross_percentages)
         new_population.append(layer_new)
     return tuple(new_population)
 
 
-def selection(population, x, y):
+def selection(population, fitness_values):
     new_population = list()
-    individual_fitness = fitness_network(x, y, 
-                                         tuple(convert(layer)
-                                               for layer in population))
-    total_fitness = sum(individual_fitness)
-    individual_probabilities = [ind_fitness / total_fitness for ind_fitness in individual_fitness]
+    total_fitness = sum(fitness_values)
+    individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
     cumulative_probabilities = [0]
     for i in range(POP_SIZE):
         cumulative_probabilities.append(cumulative_probabilities[i] + individual_probabilities[i])
@@ -184,24 +180,20 @@ def selection(population, x, y):
     return new_population
 
 
-def evaluate_population(x, y, population):
-    convert_vector = np.vectorize(convert)
+def get_best_individual(population, fitness_values):
     # best_individual = np.zeros(len(population[0]))
     best_individual = None
-    fitness_values = fitness_network(x, y,
-                                     tuple(convert(layer)
-                                           for layer in population))
     local_best = np.argmax(fitness_values)
     best = fitness_values[local_best]
     # Ugly, but faster than other ways I can think of.
     best_individual = (# weights
-                       population[0][0][local_best],
-                       population[0][1][local_best],
-                       population[0][2][local_best],
+                       population[0][local_best],
+                       population[1][local_best],
+                       population[2][local_best],
                        # biases
-                       population[1][0][local_best],
-                       population[1][1][local_best],
-                       population[1][2][local_best])
+                       population[3][local_best],
+                       population[4][local_best],
+                       population[5][local_best])
     return best, best_individual
 
 
@@ -229,6 +221,34 @@ def generate_population():
             second_layer_biases, third_layer_biases)
 
 
+def convert_population(population):
+    return tuple(convert(layer)
+                 for layer in population)
+
+
+def test_network(x, y, params):
+    first_layer_weights = params[0]
+    second_layer_weights = params[1]
+    third_layer_weights = params[2]
+    first_layer_biases = params[3]
+    second_layer_biases = params[4]
+    third_layer_biases = params[5]
+    y_pred = list()
+    for start_idx in range(0, x.shape[0], BATCH_SIZE):
+        x_batch = x[start_idx:start_idx + BATCH_SIZE]
+        z1 = np.matmul(x_batch, first_layer_weights) + first_layer_biases
+        # expit may be better, although it's debatable.
+        z1 = expit(z1)
+        z2 = np.matmul(z1, second_layer_weights) + second_layer_biases
+        z2 = expit(z2)
+        z3 = np.matmul(z2, third_layer_weights) + third_layer_biases
+        y3 = expit(z3)
+        y_pred.append(y3)
+    y_pred = np.concatenate(y_pred)
+    y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
+    return (y_pred == y).sum() / y.size
+
+
 def main():
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
@@ -239,25 +259,23 @@ def main():
     #best = 0
     population = generate_population()
 
-    best, best_individual = evaluate_population(x_train, y_train, population)
+    fitness_values = fitness_network(x_train, y_train, convert_population(population))
+    best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
         print(f'Current epoch: {i}')
-        population = selection(population, x_train, y_train)
-        population = upgrade(population)
-        new_best, new_best_individual = evaluate_population(x_train, y_train, population)
+        population = selection(population, fitness_values)
+        population = upgrade(population, cross_percentages=[.3, .3, .4])
+        fitness_values = fitness_network(x_train, y_train, convert_population(population))
+        new_best, new_best_individual = get_best_individual(population, fitness_values)
         if new_best > best:
             best = new_best
             #best_individual = np.copy(temp_individual)
             best_individual = new_best_individual
-
-    # !!! TEST FUNCTIONS DON'T WORK
-    best_score = test_network(train_set, tuple(convert(layer)
-                                               for layer in population))
-    print(f'The network achieved an accuracy of {best_score * 100} percent on training set!')
-    best_score = test_network(test_set, tuple(convert(layer)
-                                               for layer in population))
+        best_score = test_network(x_train, y_train, convert_population(best_individual))
+        print(f'The network achieved an accuracy of {best_score * 100} percent on training set!')
+    best_score = test_network(x_test, y_test, convert_population(best_individual))
     print(f'The network achieved an accuracy of {best_score * 100} percent on testing set!')
     print(f'Time taken: {time.time() - start_time} seconds!')
 
-if __name__ == '__main__':
-    main()
+
+main()
