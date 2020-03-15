@@ -230,10 +230,15 @@ def generate_population():
             second_layer_biases, third_layer_biases)
 
 
-def convert_to_binary(real_value):
-    decimal_value = int((real_value - LOWER_BOUND) / (HIGHER_BOUND - LOWER_BOUND) * (2 ** BITS_NR - 1))
-    binary_value = np.array([np.uint8(b) for b in bin(decimal_value)[2:]])
-    return binary_value
+def convert_array_to_binary(real_value_array):
+    binary_value_array = list()
+    for real_value in real_value_array:
+        decimal_value = int((real_value - LOWER_BOUND) / (HIGHER_BOUND - LOWER_BOUND) * (2 ** BITS_NR - 1))
+        binary_value = bin(decimal_value)[2:]
+        binary_value = '0' * (BITS_NR - len(binary_value)) + binary_value
+        binary_value_array.extend([np.uint8(b) for b in binary_value])
+    binary_value_array = np.reshape(binary_value_array, (len(real_value_array), BITS_NR))
+    return np.array(binary_value_array)
 
 
 def generate_smart_population(x_train, y_train, load=False):
@@ -257,10 +262,22 @@ def generate_smart_population(x_train, y_train, load=False):
     third_layer_weights = model.layers[3].get_weights()[0]
     third_layer_biases = model.layers[3].get_weights()[1]
 
-    # TODO: Efficient method to convert whole array to bits. Currently not working!!!
-    convert_to_binary_vect = np.vectorize(convert_to_binary)
-    result = convert_to_binary_vect(first_layer_weights, otypes=[np.array])
-    x = 1 + 1
+    first_layer_weights = np.array([convert_array_to_binary(real_array) for real_array in first_layer_weights])
+    second_layer_weights = np.array([convert_array_to_binary(real_array) for real_array in second_layer_weights])
+    third_layer_weights = np.array([convert_array_to_binary(real_array) for real_array in third_layer_weights])
+    first_layer_biases = convert_array_to_binary(first_layer_biases)
+    second_layer_biases = convert_array_to_binary(second_layer_biases)
+    third_layer_biases = convert_array_to_binary(third_layer_biases)
+
+    first_layer_weights = np.repeat(first_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
+    second_layer_weights = np.repeat(second_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
+    third_layer_weights = np.repeat(third_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
+    first_layer_biases = np.repeat(first_layer_biases[np.newaxis, :], POP_SIZE, axis=0)
+    second_layer_biases = np.repeat(second_layer_biases[np.newaxis, :], POP_SIZE, axis=0)
+    third_layer_biases = np.repeat(third_layer_biases[np.newaxis, :], POP_SIZE, axis=0)
+    return (first_layer_weights, second_layer_weights,
+            third_layer_weights, first_layer_biases,
+            second_layer_biases, third_layer_biases)
 
 
 def convert_population(population):
