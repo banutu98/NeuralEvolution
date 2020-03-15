@@ -9,13 +9,14 @@ import time
 from sklearn.metrics import log_loss
 from scipy.special import expit, softmax
 
-NR_EPOCHS = 20
-POP_SIZE = 100
+NR_EPOCHS = 200
+POP_SIZE = 200
+ELITISM_NR = 5
 HIGHER_BOUND = 10
 LOWER_BOUND = -10
 INTERVALS_NR = (HIGHER_BOUND - LOWER_BOUND) * 10 ** 4
 BITS_NR = math.ceil(np.log2(INTERVALS_NR))
-MUTATION_PROB = 0.03
+MUTATION_PROB = 0.05
 CROSSOVER_PROB = 0.6
 BATCH_SIZE = 256
 IDXS = 2 ** np.arange(BITS_NR)[::-1]
@@ -158,6 +159,8 @@ def upgrade(population, cross_percentages=(.3, .3, .4)):
 
 def selection(population, fitness_values):
     new_population = list()
+    best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
+    chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
     total_fitness = sum(fitness_values)
     individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
     cumulative_probabilities = [0]
@@ -167,14 +170,15 @@ def selection(population, fitness_values):
     for layer in population:
         new_layer = []
         size = 0
-        while size < POP_SIZE:
+        while size < POP_SIZE - ELITISM_NR:
             r = random.uniform(0.0001, 1)
             for i in range(POP_SIZE):
                 if cumulative_probabilities[i] < r <= cumulative_probabilities[i + 1]:
-                    if size == POP_SIZE:
+                    if size == POP_SIZE - ELITISM_NR:
                         break
                     new_layer.append(layer[i])
                     size += 1
+        new_layer.extend([layer[i] for i in chosen_elitism_values])
         new_population.append(np.array(new_layer))
     return new_population
 
