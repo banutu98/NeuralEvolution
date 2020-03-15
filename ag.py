@@ -228,18 +228,25 @@ def convert_population(population):
                  for layer in population)
 
 
-def main():
+def main(load=False):
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
         train_set, _, test_set = pickle.load(f, encoding='latin1')
         x_train, y_train = train_set
         x_test, y_test = test_set
     # best = 0
-    population = generate_population()
+    if load:
+        with open('population.pkl', 'rb') as f:
+            population = pickle.load(f)
+    else:
+        population = generate_population()
 
     fitness_values = fitness_network(x_train, y_train, convert_population(population))
     best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
+        if i % 10 == 0:
+            with open('population.pkl', 'wb') as f:
+                pickle.dump(population, f)
         print(f'Current epoch: {i}')
         population = selection(population, fitness_values)
         population = upgrade(population, cross_percentages=[.3, .3, .4])
@@ -257,4 +264,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(True)
