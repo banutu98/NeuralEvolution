@@ -2,12 +2,19 @@
 # coding: utf-8
 import numpy as np
 import math
+import os
 import gzip
 import pickle
 import random
 import time
+
 from sklearn.metrics import log_loss
 from scipy.special import expit, softmax
+
+from keras.models import Model, load_model
+from keras.layers import Input, Dense
+from keras.optimizers import Adam
+from keras.utils import to_categorical
 
 NR_EPOCHS = 200
 POP_SIZE = 200
@@ -223,12 +230,45 @@ def generate_population():
             second_layer_biases, third_layer_biases)
 
 
+def convert_to_binary(real_value):
+    decimal_value = int((real_value - LOWER_BOUND) / (HIGHER_BOUND - LOWER_BOUND) * (2 ** BITS_NR - 1))
+    binary_value = np.array([np.uint8(b) for b in bin(decimal_value)[2:]])
+    return binary_value
+
+
+def generate_smart_population(x_train, y_train, load=False):
+    if not load:
+        input_layer = Input(shape=(784,))
+        dense_1 = Dense(100, activation='relu')(input_layer)
+        dense_2 = Dense(10, activation='relu')(dense_1)
+        pred = Dense(10, activation='softmax')(dense_2)
+        model = Model(inputs=input_layer, outputs=pred)
+        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
+        model.summary()
+        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
+        model.save('model.h5')
+    else:
+        model = load_model('model.h5')
+
+    first_layer_weights = model.layers[1].get_weights()[0]
+    first_layer_biases = model.layers[1].get_weights()[1]
+    second_layer_weights = model.layers[2].get_weights()[0]
+    second_layer_biases = model.layers[2].get_weights()[1]
+    third_layer_weights = model.layers[3].get_weights()[0]
+    third_layer_biases = model.layers[3].get_weights()[1]
+
+    # TODO: Efficient method to convert whole array to bits. Currently not working!!!
+    convert_to_binary_vect = np.vectorize(convert_to_binary)
+    result = convert_to_binary_vect(first_layer_weights, otypes=[np.array])
+    x = 1 + 1
+
+
 def convert_population(population):
     return tuple(convert(layer)
                  for layer in population)
 
 
-def main(load=False):
+def main(use_back_prop=False, load=False):
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
         train_set, _, test_set = pickle.load(f, encoding='latin1')
@@ -236,10 +276,19 @@ def main(load=False):
         x_test, y_test = test_set
     # best = 0
     if load:
-        with open('population.pkl', 'rb') as f:
-            population = pickle.load(f)
+        if os.path.exists('population.pkl'):
+            with open('population.pkl', 'rb') as f:
+                population = pickle.load(f)
+        else:
+            if not use_back_prop:
+                population = generate_population()
+            else:
+                population = generate_smart_population(x_train, y_train, load=True)
     else:
-        population = generate_population()
+        if not use_back_prop:
+            population = generate_population()
+        else:
+            population = generate_smart_population(x_train, y_train, load=True)
 
     fitness_values = fitness_network(x_train, y_train, convert_population(population))
     best, best_individual = get_best_individual(population, fitness_values)
@@ -264,4 +313,9 @@ def main(load=False):
 
 
 if __name__ == '__main__':
-    main(True)
+    with gzip.open('mnist.pkl.gz', 'rb') as f:
+        train_set, _, test_set = pickle.load(f, encoding='latin1')
+        x_train, y_train = train_set
+        x_test, y_test = test_set
+    generate_smart_population(x_train, y_train, load=True)
+    # main(use_back_prop=False, load=True)
