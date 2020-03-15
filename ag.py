@@ -272,9 +272,9 @@ def generate_smart_population(x_train, y_train, load=False):
     first_layer_weights = np.repeat(first_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
     second_layer_weights = np.repeat(second_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
     third_layer_weights = np.repeat(third_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
-    first_layer_biases = np.repeat(first_layer_biases[np.newaxis, :], POP_SIZE, axis=0)
-    second_layer_biases = np.repeat(second_layer_biases[np.newaxis, :], POP_SIZE, axis=0)
-    third_layer_biases = np.repeat(third_layer_biases[np.newaxis, :], POP_SIZE, axis=0)
+    first_layer_biases = np.repeat(first_layer_biases[np.newaxis, :], POP_SIZE, axis=0)[:, np.newaxis, :, :]
+    second_layer_biases = np.repeat(second_layer_biases[np.newaxis, :], POP_SIZE, axis=0)[:, np.newaxis, :, :]
+    third_layer_biases = np.repeat(third_layer_biases[np.newaxis, :], POP_SIZE, axis=0)[:, np.newaxis, :, :]
     return (first_layer_weights, second_layer_weights,
             third_layer_weights, first_layer_biases,
             second_layer_biases, third_layer_biases)
@@ -330,9 +330,4 @@ def main(use_back_prop=False, load=False):
 
 
 if __name__ == '__main__':
-    with gzip.open('mnist.pkl.gz', 'rb') as f:
-        train_set, _, test_set = pickle.load(f, encoding='latin1')
-        x_train, y_train = train_set
-        x_test, y_test = test_set
-    generate_smart_population(x_train, y_train, load=True)
-    # main(use_back_prop=False, load=True)
+    main(use_back_prop=True, load=True)
