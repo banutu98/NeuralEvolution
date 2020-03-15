@@ -39,11 +39,6 @@ def sigmoid(z):
     return np.divide(1, (1 + np.exp(-z)))
 
 
-def soft_max(z):
-    e_z = np.exp(z)
-    return e_z / e_z.sum(axis=0)
-
-
 def expit_approx(x):
     return 1.0 / (1 + np.abs(x))
 
@@ -72,7 +67,6 @@ def fitness_network(x, y, params, testing=False):
         z2 = expit(z2)
         z3 = np.matmul(z2, third_layer_weights) + third_layer_biases
         y3 = softmax(z3)
-        y3 = y3.argmax(axis=2)
         y_pred.append(y3)
     if not testing:
         y_pred = np.concatenate(y_pred, axis=1)
@@ -82,7 +76,7 @@ def fitness_network(x, y, params, testing=False):
     else:
         y_pred = np.concatenate(y_pred)
         y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
-        return (y_pred == y).sum() / y.size
+        return np.sum(y_pred == y) / y.size
 
 
 def mutate(m):
@@ -92,28 +86,28 @@ def mutate(m):
 
 
 def crossover(m, cross_percentages):
-    def swap_weights(m, i1, i2):
+    def swap_weights(mat, i1, i2):
         n_pop = len(i1)
-        i = np.random.randint(m.shape[1], size=(n_pop,))
-        j = np.random.randint(m.shape[2], size=(n_pop,))
+        i = np.random.randint(mat.shape[1], size=(n_pop,))
+        j = np.random.randint(mat.shape[2], size=(n_pop,))
         for i1_idx, i2_idx in zip(i1, i2):
-            temp = m[i1_idx, i, j].copy()
-            m[i1_idx, i, j] = m[i2_idx, i, j]
-            m[i2_idx, i, j] = temp
+            temp = mat[i1_idx, i, j].copy()
+            mat[i1_idx, i, j] = mat[i2_idx, i, j]
+            mat[i2_idx, i, j] = temp
 
-    def swap_neurons(m, i1, i2):
+    def swap_neurons(mat, i1, i2):
         n_pop = len(i1)
-        i = np.random.randint(m.shape[1], size=(n_pop,))
+        i = np.random.randint(mat.shape[1], size=(n_pop,))
         for i1_idx, i2_idx in zip(i1, i2):
-            temp = m[i1_idx, i].copy()
-            m[i1_idx, i] = m[i2_idx, i]
-            m[i2_idx, i] = temp
+            temp = mat[i1_idx, i].copy()
+            mat[i1_idx, i] = mat[i2_idx, i]
+            mat[i2_idx, i] = temp
 
-    def swap_layers(m, i1, i2):
+    def swap_layers(mat, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
-            temp = m[i1_idx].copy()
-            m[i1_idx] = m[i2_idx]
-            m[i2_idx] = temp
+            temp = mat[i1_idx].copy()
+            mat[i1_idx] = mat[i2_idx]
+            mat[i2_idx] = temp
 
     def split_perc(indices, perc):
         # Turn percentages into values between 0 and 1
