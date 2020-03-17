@@ -244,16 +244,19 @@ def convert_array_to_binary(real_value_array):
 def generate_smart_population(x_train, y_train, load=False):
     if not load:
         input_layer = Input(shape=(784,))
-        dense_1 = Dense(100, activation='relu')(input_layer)
-        dense_2 = Dense(10, activation='relu')(dense_1)
+        dense_1 = Dense(100, activation='sigmoid')(input_layer)
+        dense_2 = Dense(10, activation='sigmoid')(dense_1)
         pred = Dense(10, activation='softmax')(dense_2)
         model = Model(inputs=input_layer, outputs=pred)
         model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
         model.summary()
         model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
         model.save('model.h5')
+        loss, acc = model.evaluate(x_train, to_categorical(y_train))
     else:
         model = load_model('model.h5')
+        loss, acc = model.evaluate(x_train, to_categorical(y_train))
+    print(f'Accuracy from the initial model: {acc}')
 
     first_layer_weights = model.layers[1].get_weights()[0]
     first_layer_biases = model.layers[1].get_weights()[1]
