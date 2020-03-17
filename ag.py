@@ -166,8 +166,6 @@ def upgrade(population, cross_percentages=(.3, .3, .4)):
 
 def selection(population, fitness_values):
     new_population = list()
-    best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
-    chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
     total_fitness = sum(fitness_values)
     individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
     cumulative_probabilities = [0]
@@ -177,15 +175,14 @@ def selection(population, fitness_values):
     for layer in population:
         new_layer = []
         size = 0
-        while size < POP_SIZE - ELITISM_NR:
+        while size < POP_SIZE:
             r = random.uniform(0.0001, 1)
             for i in range(POP_SIZE):
                 if cumulative_probabilities[i] < r <= cumulative_probabilities[i + 1]:
-                    if size == POP_SIZE - ELITISM_NR:
+                    if size == POP_SIZE:
                         break
                     new_layer.append(layer[i])
                     size += 1
-        new_layer.extend([layer[i] for i in chosen_elitism_values])
         new_population.append(np.array(new_layer))
     return new_population
 
