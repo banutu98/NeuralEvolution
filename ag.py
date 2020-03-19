@@ -11,13 +11,11 @@ import time
 
 from sklearn.metrics import log_loss
 from scipy.special import expit, softmax
-from scipy.linalg.blas import sgemm
 
 from keras.models import Model, load_model
 from keras.layers import Input, Dense
 from keras.optimizers import Adam
 from keras.utils import to_categorical
-
 
 NR_EPOCHS = 200
 POP_SIZE = 100
@@ -69,7 +67,7 @@ def fitness_network(population, x, y):
             y3 = softmax(z3)
             y_pred.append(y3)
         y_pred = np.concatenate(y_pred)
-        losses.append(1/np.exp(log_loss(y, y_pred)))
+        losses.append(1 / np.exp(log_loss(y, y_pred)))
     return losses
 
 
@@ -115,8 +113,8 @@ def crossover(pop, cross_percentages):
         for i1_idx, i2_idx in zip(i1, i2):
             # choose a random layer (weights only)
             l = random.randint(0, 2)
-            i = random.randint(0, p[i1_idx][l].shape[0]-1)
-            j = random.randint(0, p[i1_idx][l].shape[1]-1)
+            i = random.randint(0, p[i1_idx][l].shape[0] - 1)
+            j = random.randint(0, p[i1_idx][l].shape[1] - 1)
             temp = p[i1_idx][l][i, j].copy()
             p[i1_idx][l][i, j] = p[i2_idx][l][i, j]
             p[i2_idx][l][i, j] = temp
@@ -125,7 +123,7 @@ def crossover(pop, cross_percentages):
         for i1_idx, i2_idx in zip(i1, i2):
             # choose a random layer (weights and biases)
             l = random.randint(0, 5)
-            i = random.randint(0, p[i1_idx][l].shape[0]-1)
+            i = random.randint(0, p[i1_idx][l].shape[0] - 1)
             temp = p[i1_idx][l][i].copy()
             p[i1_idx][l][i] = p[i2_idx][l][i]
             p[i2_idx][l][i] = temp
@@ -183,8 +181,8 @@ def upgrade(population, cross_percentages=(.3, .3, .4)):
 
 def selection(population, fitness_values):
     new_population = []
-    #best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
-    #chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
+    # best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
+    # chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
     # Compute cumulative distribution.
     total_fitness = sum(fitness_values)
     individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
@@ -203,6 +201,35 @@ def get_best_individual(population, fitness_values):
     best = fitness_values[local_best]
     best_individual = population[local_best]
     return best, best_individual
+
+
+def generate_smart_population(x_train, y_train, load=False):
+    if not load:
+        input_layer = Input(shape=(784,))
+        dense_1 = Dense(100, activation='sigmoid')(input_layer)
+        dense_2 = Dense(10, activation='sigmoid')(dense_1)
+        pred = Dense(10, activation='softmax')(dense_2)
+        model = Model(inputs=input_layer, outputs=pred)
+        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
+        model.summary()
+        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
+        model.save('model.h5')
+        loss, acc = model.evaluate(x_train, to_categorical(y_train))
+    else:
+        model = load_model('model.h5')
+        loss, acc = model.evaluate(x_train, to_categorical(y_train))
+    print(f'Accuracy from the initial model: {acc}')
+
+    first_layer_weights = model.layers[1].get_weights()[0]
+    first_layer_biases = model.layers[1].get_weights()[1]
+    second_layer_weights = model.layers[2].get_weights()[0]
+    second_layer_biases = model.layers[2].get_weights()[1]
+    third_layer_weights = model.layers[3].get_weights()[0]
+    third_layer_biases = model.layers[3].get_weights()[1]
+
+    return [[np.copy(first_layer_weights), np.copy(second_layer_weights), np.copy(third_layer_weights),
+             np.copy(first_layer_biases), np.copy(second_layer_biases), np.copy(third_layer_biases)]
+            for _ in range(POP_SIZE)]
 
 
 def generate_population():
@@ -227,29 +254,40 @@ def generate_population():
             for _ in range(POP_SIZE)]
 
 
-def main():
+def main(use_back_prop=True, load=True):
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
         train_set, _, test_set = pickle.load(f, encoding='latin1')
         x_train, y_train = train_set
         x_test, y_test = test_set
-    population = generate_population()
-    print(population[0][0].shape[0])
+    if load:
+        if os.path.exists('population.pkl'):
+            with open('population.pkl', 'rb') as f:
+                population = pickle.load(f)
+        else:
+            if not use_back_prop:
+                population = generate_population()
+            else:
+                population = generate_smart_population(x_train, y_train, load=True)
+    else:
+        if not use_back_prop:
+            population = generate_population()
+        else:
+            population = generate_smart_population(x_train, y_train, load=True)
+
     fitness_values = fitness_network(population, x_train, y_train)
     best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
+        if i % 10 == 0:
+            with open('population.pkl', 'wb') as f:
+                pickle.dump(population, f)
         print(f'Current epoch: {i}')
-        old_population = population
         population = selection(population, fitness_values)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
-        #print('populations equal?')
-        old_fitness_values = fitness_values
         fitness_values = fitness_network(population, x_train, y_train)
-        print('fitness equal?',
-              np.allclose(fitness_values,old_fitness_values))
         new_best, new_best_individual = get_best_individual(population, fitness_values)
-        print('current best:', best)
-        print('new best:', new_best)
+        print('Current best:', best)
+        print('New best:', new_best)
         if new_best > best:
             best = new_best
             best_individual = new_best_individual
@@ -261,4 +299,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(use_back_prop=True, load=True)
