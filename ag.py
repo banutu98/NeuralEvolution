@@ -179,20 +179,30 @@ def upgrade(population, cross_percentages=(.3, .3, .4)):
     return new_population
 
 
-def selection(population, fitness_values):
+def selection(population, fitness_values, elitism=False):
     new_population = []
-    # best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
-    # chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
     # Compute cumulative distribution.
     total_fitness = sum(fitness_values)
     individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
     cummulative_probabilities = np.cumsum(individual_probabilities)
-    # Generate probabilities for new population.
-    r = np.random.rand(POP_SIZE)
-    # Get insertion points through a left bisect algorithm.
-    selected = np.searchsorted(cummulative_probabilities, r)
-    for idx in selected:
-        new_population.append(population[idx])
+    if not elitism:
+        # Generate probabilities for new population.
+        r = np.random.rand(POP_SIZE)
+        # Get insertion points through a left bisect algorithm.
+        selected = np.searchsorted(cummulative_probabilities, r)
+        for idx in selected:
+            new_population.append(population[idx])
+    else:
+        best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
+        chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
+        # Generate probabilities for new population.
+        r = np.random.rand(POP_SIZE - ELITISM_NR)
+        # Get insertion points through a left bisect algorithm.
+        selected = np.searchsorted(cummulative_probabilities, r)
+        for idx in selected:
+            new_population.append(population[idx])
+        for idx in chosen_elitism_values:
+            new_population.append(population[idx])
     return new_population
 
 
@@ -282,7 +292,7 @@ def main(use_back_prop=True, load=True):
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
-        population = selection(population, fitness_values)
+        population = selection(population, fitness_values, elitism=True)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
