@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+
 import numpy as np
 import math
 import os
@@ -10,35 +11,24 @@ import time
 
 from sklearn.metrics import log_loss
 from scipy.special import expit, softmax
+from scipy.linalg.blas import sgemm
 
 from keras.models import Model, load_model
 from keras.layers import Input, Dense
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
+
 NR_EPOCHS = 200
-POP_SIZE = 200
+POP_SIZE = 100
 ELITISM_NR = 10
-HIGHER_BOUND = 10
-LOWER_BOUND = -10
+HIGHER_BOUND = 1
+LOWER_BOUND = -1
 INTERVALS_NR = (HIGHER_BOUND - LOWER_BOUND) * 10 ** 4
 BITS_NR = math.ceil(np.log2(INTERVALS_NR))
-MUTATION_PROB = 0.03
+MUTATION_PROB = 0.1
 CROSSOVER_PROB = 0.6
 BATCH_SIZE = 256
-IDXS = 2 ** np.arange(BITS_NR)[::-1]
-
-
-def convert_bits(bits, indices):
-    return bits.dot(indices)
-
-
-def convert(m):
-    convert_bits_vect = np.vectorize(convert_bits,
-                                     otypes=[np.uint32],
-                                     signature='(m,n),(n)->(m)')
-    result = convert_bits_vect(m, IDXS) / (2 ** BITS_NR - 1)
-    return result * (HIGHER_BOUND - LOWER_BOUND) + LOWER_BOUND
 
 
 # Activation functions
@@ -58,64 +48,95 @@ def softplus(x):
 # expit imported from scipy.special
 
 
-def fitness_network(x, y, params, testing=False):
-    first_layer_weights = params[0]
-    second_layer_weights = params[1]
-    third_layer_weights = params[2]
-    first_layer_biases = params[3]
-    second_layer_biases = params[4]
-    third_layer_biases = params[5]
+def fitness_network(population, x, y):
+    losses = []
+    for individual in population:
+        first_layer_weights = individual[0]
+        second_layer_weights = individual[1]
+        third_layer_weights = individual[2]
+        first_layer_biases = individual[3]
+        second_layer_biases = individual[4]
+        third_layer_biases = individual[5]
+        y_pred = list()
+        for start_idx in range(0, x.shape[0], BATCH_SIZE):
+            x_batch = x[start_idx:start_idx + BATCH_SIZE]
+            z1 = np.dot(x_batch, first_layer_weights) + first_layer_biases
+            # expit may be better, although it's debatable.
+            z1 = expit(z1)
+            z2 = np.dot(z1, second_layer_weights) + second_layer_biases
+            z2 = expit(z2)
+            z3 = np.dot(z2, third_layer_weights) + third_layer_biases
+            y3 = softmax(z3)
+            y_pred.append(y3)
+        y_pred = np.concatenate(y_pred)
+        losses.append(1/np.exp(log_loss(y, y_pred)))
+    return losses
+
+
+def test_network(individual, x, y):
+    first_layer_weights = individual[0]
+    second_layer_weights = individual[1]
+    third_layer_weights = individual[2]
+    first_layer_biases = individual[3]
+    second_layer_biases = individual[4]
+    third_layer_biases = individual[5]
     y_pred = list()
     for start_idx in range(0, x.shape[0], BATCH_SIZE):
         x_batch = x[start_idx:start_idx + BATCH_SIZE]
-        z1 = np.matmul(x_batch, first_layer_weights) + first_layer_biases
+        z1 = np.dot(x_batch, first_layer_weights) + first_layer_biases
         # expit may be better, although it's debatable.
         z1 = expit(z1)
-        z2 = np.matmul(z1, second_layer_weights) + second_layer_biases
+        z2 = np.dot(z1, second_layer_weights) + second_layer_biases
         z2 = expit(z2)
-        z3 = np.matmul(z2, third_layer_weights) + third_layer_biases
+        z3 = np.dot(z2, third_layer_weights) + third_layer_biases
         y3 = softmax(z3)
         y_pred.append(y3)
-    if not testing:
-        y_pred = np.concatenate(y_pred, axis=1)
-        y_true = np.broadcast_to(y, (y_pred.shape[0], *y.shape))
-        return [1 / log_loss(y_true[i], y_pred[i])
-                for i in range(y_pred.shape[0])]
-    else:
-        y_pred = np.concatenate(y_pred)
-        y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
-        return np.sum(y_pred == y) / y.size
+    y_pred = np.concatenate(y_pred)
+    y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
+    return np.sum(y_pred == y) / y.size
 
 
-def mutate(m):
-    return np.where(np.random.rand(*m.shape) < MUTATION_PROB,
-                    1 - m,
-                    m)
+def mutate(pop):
+    new_pop = []
+    for indiv in pop:
+        new_indiv = []
+        for layer in indiv:
+            new_indiv.append(np.where(np.random.rand(*layer.shape) < MUTATION_PROB,
+                                      np.random.uniform(low=LOWER_BOUND,
+                                                        high=HIGHER_BOUND,
+                                                        size=layer.shape),
+                                      layer))
+        new_pop.append(new_indiv)
+    return new_pop
 
 
-def crossover(m, cross_percentages):
-    def swap_weights(mat, i1, i2):
-        n_pop = len(i1)
-        i = np.random.randint(mat.shape[1], size=(n_pop,))
-        j = np.random.randint(mat.shape[2], size=(n_pop,))
+def crossover(pop, cross_percentages):
+    def swap_weights(p, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
-            temp = mat[i1_idx, i, j].copy()
-            mat[i1_idx, i, j] = mat[i2_idx, i, j]
-            mat[i2_idx, i, j] = temp
+            # choose a random layer (weights only)
+            l = random.randint(0, 2)
+            i = random.randint(0, p[i1_idx][l].shape[0]-1)
+            j = random.randint(0, p[i1_idx][l].shape[1]-1)
+            temp = p[i1_idx][l][i, j].copy()
+            p[i1_idx][l][i, j] = p[i2_idx][l][i, j]
+            p[i2_idx][l][i, j] = temp
 
-    def swap_neurons(mat, i1, i2):
-        n_pop = len(i1)
-        i = np.random.randint(mat.shape[1], size=(n_pop,))
+    def swap_neurons(p, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
-            temp = mat[i1_idx, i].copy()
-            mat[i1_idx, i] = mat[i2_idx, i]
-            mat[i2_idx, i] = temp
+            # choose a random layer (weights and biases)
+            l = random.randint(0, 5)
+            i = random.randint(0, p[i1_idx][l].shape[0]-1)
+            temp = p[i1_idx][l][i].copy()
+            p[i1_idx][l][i] = p[i2_idx][l][i]
+            p[i2_idx][l][i] = temp
 
-    def swap_layers(mat, i1, i2):
+    def swap_layers(p, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
-            temp = mat[i1_idx].copy()
-            mat[i1_idx] = mat[i2_idx]
-            mat[i2_idx] = temp
+            # choose a random layer (weights and biases)
+            l = random.randint(0, 5)
+            temp = p[i1_idx][l].copy()
+            p[i1_idx][l] = p[i2_idx][l]
+            p[i2_idx][l] = temp
 
     def split_perc(indices, perc):
         # Turn percentages into values between 0 and 1
@@ -148,189 +169,96 @@ def crossover(m, cross_percentages):
                                         size=cross_indices.size,
                                         replace=False)
     weights, neurons, layers = split_perc(shuffled_indices, cross_percentages)
-    swap_weights(m, *np.split(weights, 2))
-    swap_neurons(m, *np.split(neurons, 2))
-    swap_layers(m, *np.split(layers, 2))
+    swap_weights(pop, *np.split(weights, 2))
+    swap_neurons(pop, *np.split(neurons, 2))
+    swap_layers(pop, *np.split(layers, 2))
 
 
 def upgrade(population, cross_percentages=(.3, .3, .4)):
-    new_population = []
-    for i in range(len(population)):
-        layer = population[i]
-        layer_new = mutate(layer)
-        # This function modifies the matrix in-place
-        crossover(layer_new, cross_percentages)
-        new_population.append(layer_new)
-    return tuple(new_population)
+    new_population = mutate(population)
+    # This function modifies the matrix in-place
+    crossover(new_population, cross_percentages)
+    return new_population
 
 
 def selection(population, fitness_values):
-    new_population = list()
-    best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
-    chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
+    new_population = []
+    #best_fitness_values = sorted(fitness_values, reverse=True)[:ELITISM_NR]
+    #chosen_elitism_values = [np.where(fitness_values == i)[0][0] for i in best_fitness_values]
+    # Compute cumulative distribution.
     total_fitness = sum(fitness_values)
     individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
-    cumulative_probabilities = [0]
-    for i in range(POP_SIZE):
-        cumulative_probabilities.append(cumulative_probabilities[i] + individual_probabilities[i])
-    # Do this for each layer.
-    for layer in population:
-        new_layer = []
-        size = 0
-        while size < POP_SIZE - ELITISM_NR:
-            r = random.uniform(0.0001, 1)
-            for i in range(POP_SIZE):
-                if cumulative_probabilities[i] < r <= cumulative_probabilities[i + 1]:
-                    if size == POP_SIZE - ELITISM_NR:
-                        break
-                    new_layer.append(layer[i])
-                    size += 1
-        new_layer.extend([layer[i] for i in chosen_elitism_values])
-        new_population.append(np.array(new_layer))
+    cummulative_probabilities = np.cumsum(individual_probabilities)
+    # Generate probabilities for new population.
+    r = np.random.rand(POP_SIZE)
+    # Get insertion points through a left bisect algorithm.
+    selected = np.searchsorted(cummulative_probabilities, r)
+    for idx in selected:
+        new_population.append(population[idx])
     return new_population
 
 
 def get_best_individual(population, fitness_values):
-    # best_individual = np.zeros(len(population[0]))
     local_best = np.argmax(fitness_values)
     best = fitness_values[local_best]
-    # Ugly, but faster than other ways I can think of.
-    best_individual = (  # weights
-        population[0][local_best],
-        population[1][local_best],
-        population[2][local_best],
-        # biases
-        population[3][local_best],
-        population[4][local_best],
-        population[5][local_best])
+    best_individual = population[local_best]
     return best, best_individual
 
 
 def generate_population():
-    first_layer_weights = np.random.randint(2,
-                                            size=(POP_SIZE, 784, 100, BITS_NR),
-                                            dtype=np.uint8)
-    second_layer_weights = np.random.randint(2,
-                                             size=(POP_SIZE, 100, 10, BITS_NR),
-                                             dtype=np.uint8)
-    third_layer_weights = np.random.randint(2,
-                                            size=(POP_SIZE, 10, 10, BITS_NR),
-                                            dtype=np.uint8)
-    first_layer_biases = np.random.randint(2,
-                                           size=(POP_SIZE, 100, BITS_NR),
-                                           dtype=np.uint8)[:, np.newaxis, :, :]
-    second_layer_biases = np.random.randint(2,
-                                            size=(POP_SIZE, 10, BITS_NR),
-                                            dtype=np.uint8)[:, np.newaxis, :, :]
-    third_layer_biases = np.random.randint(2,
-                                           size=(POP_SIZE, 10, BITS_NR),
-                                           dtype=np.uint8)[:, np.newaxis, :, :]
-    return (first_layer_weights, second_layer_weights,
-            third_layer_weights, first_layer_biases,
-            second_layer_biases, third_layer_biases)
+    return [[np.random.uniform(low=LOWER_BOUND,
+                               high=HIGHER_BOUND,
+                               size=(784, 100)).astype('f'),
+             np.random.uniform(low=LOWER_BOUND,
+                               high=HIGHER_BOUND,
+                               size=(100, 10)).astype('f'),
+             np.random.uniform(low=LOWER_BOUND,
+                               high=HIGHER_BOUND,
+                               size=(10, 10)).astype('f'),
+             np.random.uniform(low=LOWER_BOUND,
+                               high=HIGHER_BOUND,
+                               size=(100,)).astype('f'),
+             np.random.uniform(low=LOWER_BOUND,
+                               high=HIGHER_BOUND,
+                               size=(10,)).astype('f'),
+             np.random.uniform(low=LOWER_BOUND,
+                               high=HIGHER_BOUND,
+                               size=(10,)).astype('f')]
+            for _ in range(POP_SIZE)]
 
 
-def convert_array_to_binary(real_value_array):
-    binary_value_array = list()
-    for real_value in real_value_array:
-        decimal_value = int((real_value - LOWER_BOUND) / (HIGHER_BOUND - LOWER_BOUND) * (2 ** BITS_NR - 1))
-        binary_value = bin(decimal_value)[2:]
-        binary_value = '0' * (BITS_NR - len(binary_value)) + binary_value
-        binary_value_array.extend([np.uint8(b) for b in binary_value])
-    binary_value_array = np.reshape(binary_value_array, (len(real_value_array), BITS_NR))
-    return np.array(binary_value_array)
-
-
-def generate_smart_population(x_train, y_train, load=False):
-    if not load:
-        input_layer = Input(shape=(784,))
-        dense_1 = Dense(100, activation='sigmoid')(input_layer)
-        dense_2 = Dense(10, activation='sigmoid')(dense_1)
-        pred = Dense(10, activation='softmax')(dense_2)
-        model = Model(inputs=input_layer, outputs=pred)
-        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
-        model.summary()
-        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
-        model.save('model.h5')
-        loss, acc = model.evaluate(x_train, to_categorical(y_train))
-    else:
-        model = load_model('model.h5')
-        loss, acc = model.evaluate(x_train, to_categorical(y_train))
-    print(f'Accuracy from the initial model: {acc}')
-
-    first_layer_weights = model.layers[1].get_weights()[0]
-    first_layer_biases = model.layers[1].get_weights()[1]
-    second_layer_weights = model.layers[2].get_weights()[0]
-    second_layer_biases = model.layers[2].get_weights()[1]
-    third_layer_weights = model.layers[3].get_weights()[0]
-    third_layer_biases = model.layers[3].get_weights()[1]
-
-    first_layer_weights = np.array([convert_array_to_binary(real_array) for real_array in first_layer_weights])
-    second_layer_weights = np.array([convert_array_to_binary(real_array) for real_array in second_layer_weights])
-    third_layer_weights = np.array([convert_array_to_binary(real_array) for real_array in third_layer_weights])
-    first_layer_biases = convert_array_to_binary(first_layer_biases)
-    second_layer_biases = convert_array_to_binary(second_layer_biases)
-    third_layer_biases = convert_array_to_binary(third_layer_biases)
-
-    first_layer_weights = np.repeat(first_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
-    second_layer_weights = np.repeat(second_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
-    third_layer_weights = np.repeat(third_layer_weights[np.newaxis, :], POP_SIZE, axis=0)
-    first_layer_biases = np.repeat(first_layer_biases[np.newaxis, :], POP_SIZE, axis=0)[:, np.newaxis, :, :]
-    second_layer_biases = np.repeat(second_layer_biases[np.newaxis, :], POP_SIZE, axis=0)[:, np.newaxis, :, :]
-    third_layer_biases = np.repeat(third_layer_biases[np.newaxis, :], POP_SIZE, axis=0)[:, np.newaxis, :, :]
-    return (first_layer_weights, second_layer_weights,
-            third_layer_weights, first_layer_biases,
-            second_layer_biases, third_layer_biases)
-
-
-def convert_population(population):
-    return tuple(convert(layer)
-                 for layer in population)
-
-
-def main(use_back_prop=False, load=False):
+def main():
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
         train_set, _, test_set = pickle.load(f, encoding='latin1')
         x_train, y_train = train_set
         x_test, y_test = test_set
-    # best = 0
-    if load:
-        if os.path.exists('population.pkl'):
-            with open('population.pkl', 'rb') as f:
-                population = pickle.load(f)
-        else:
-            if not use_back_prop:
-                population = generate_population()
-            else:
-                population = generate_smart_population(x_train, y_train, load=True)
-    else:
-        if not use_back_prop:
-            population = generate_population()
-        else:
-            population = generate_smart_population(x_train, y_train, load=True)
-
-    fitness_values = fitness_network(x_train, y_train, convert_population(population))
+    population = generate_population()
+    print(population[0][0].shape[0])
+    fitness_values = fitness_network(population, x_train, y_train)
     best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
-        if i % 10 == 0:
-            with open('population.pkl', 'wb') as f:
-                pickle.dump(population, f)
         print(f'Current epoch: {i}')
+        old_population = population
         population = selection(population, fitness_values)
-        population = upgrade(population, cross_percentages=[.3, .3, .4])
-        fitness_values = fitness_network(x_train, y_train, convert_population(population))
+        population = upgrade(population, cross_percentages=[.40, .55, .05])
+        #print('populations equal?')
+        old_fitness_values = fitness_values
+        fitness_values = fitness_network(population, x_train, y_train)
+        print('fitness equal?',
+              np.allclose(fitness_values,old_fitness_values))
         new_best, new_best_individual = get_best_individual(population, fitness_values)
+        print('current best:', best)
+        print('new best:', new_best)
         if new_best > best:
             best = new_best
-            # best_individual = np.copy(temp_individual)
             best_individual = new_best_individual
-        best_score = fitness_network(x_train, y_train, convert_population(best_individual), testing=True)
-        print(f'The network achieved an accuracy of {best_score * 100} percent on training set!')
-    best_score = fitness_network(x_test, y_test, convert_population(best_individual), testing=True)
+            best_score = test_network(best_individual, x_train, y_train)
+            print(f'The network achieved an accuracy of {best_score * 100} percent on training set!')
+    best_score = test_network(best_individual, x_test, y_test)
     print(f'The network achieved an accuracy of {best_score * 100} percent on testing set!')
     print(f'Time taken: {time.time() - start_time} seconds!')
 
 
 if __name__ == '__main__':
-    main(use_back_prop=True, load=True)
+    main()
