@@ -8,6 +8,7 @@ import gzip
 import pickle
 import random
 import time
+import copy
 
 from sklearn.metrics import log_loss
 from scipy.special import expit, softmax
@@ -17,16 +18,24 @@ from keras.layers import Input, Dense
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
+
 NR_EPOCHS = 200
-POP_SIZE = 100
+POP_SIZE = 30
 ELITISM_NR = 10
 HIGHER_BOUND = 1
 LOWER_BOUND = -1
+# 95% of values will be between LOWER_BOUND and HIGHER_BOUND
+# if mean centered
+SCALE = ((HIGHER_BOUND - LOWER_BOUND) / 2) / 2
 INTERVALS_NR = (HIGHER_BOUND - LOWER_BOUND) * 10 ** 4
 BITS_NR = math.ceil(np.log2(INTERVALS_NR))
 MUTATION_PROB = 0.1
 CROSSOVER_PROB = 0.6
 BATCH_SIZE = 256
+# 1 input, 1 hidden, 1 output = 3 layers
+N_UNITS = [784, 16, 10]
+N_WEIGHTS = len(N_UNITS) - 1
+N_BIASES = N_WEIGHTS
 
 
 # Activation functions
@@ -48,47 +57,43 @@ def softplus(x):
 
 def fitness_network(population, x, y):
     losses = []
+    if not population:
+        return []
+    n_weights = len(population[0]) // 2
     for individual in population:
-        first_layer_weights = individual[0]
-        second_layer_weights = individual[1]
-        third_layer_weights = individual[2]
-        first_layer_biases = individual[3]
-        second_layer_biases = individual[4]
-        third_layer_biases = individual[5]
+        weights = individual[:n_weights]
+        biases = individual[n_weights:]
         y_pred = list()
         for start_idx in range(0, x.shape[0], BATCH_SIZE):
             x_batch = x[start_idx:start_idx + BATCH_SIZE]
-            z1 = np.dot(x_batch, first_layer_weights) + first_layer_biases
-            # expit may be better, although it's debatable.
-            z1 = expit(z1)
-            z2 = np.dot(z1, second_layer_weights) + second_layer_biases
-            z2 = expit(z2)
-            z3 = np.dot(z2, third_layer_weights) + third_layer_biases
-            y3 = softmax(z3)
-            y_pred.append(y3)
+            z = x_batch
+            for i in range(n_weights - 1):
+                z = np.dot(z, weights[i]) + biases[i]
+                # expit may be better, although it's debatable.
+                z = expit(z)
+            z = np.dot(z, weights[n_weights - 1]) + biases[n_weights - 1]
+            y_final = softmax(z)
+            y_pred.append(y_final)
         y_pred = np.concatenate(y_pred)
         losses.append(1 / np.exp(log_loss(y, y_pred)))
     return losses
 
 
 def test_network(individual, x, y):
-    first_layer_weights = individual[0]
-    second_layer_weights = individual[1]
-    third_layer_weights = individual[2]
-    first_layer_biases = individual[3]
-    second_layer_biases = individual[4]
-    third_layer_biases = individual[5]
+    n_weights = len(individual) // 2
+    weights = individual[:n_weights]
+    biases = individual[n_weights:]
     y_pred = list()
     for start_idx in range(0, x.shape[0], BATCH_SIZE):
         x_batch = x[start_idx:start_idx + BATCH_SIZE]
-        z1 = np.dot(x_batch, first_layer_weights) + first_layer_biases
-        # expit may be better, although it's debatable.
-        z1 = expit(z1)
-        z2 = np.dot(z1, second_layer_weights) + second_layer_biases
-        z2 = expit(z2)
-        z3 = np.dot(z2, third_layer_weights) + third_layer_biases
-        y3 = softmax(z3)
-        y_pred.append(y3)
+        z = x_batch
+        for i in range(n_weights - 1):
+            z = np.dot(z, weights[i]) + biases[i]
+            # expit may be better, although it's debatable.
+            z = expit(z)
+        z = np.dot(z, weights[n_weights - 1] + biases[n_weights] - 1)
+        y_final = softmax(z)
+        y_pred.append(y_final)
     y_pred = np.concatenate(y_pred)
     y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
     return np.sum(y_pred == y) / y.size
@@ -100,9 +105,9 @@ def mutate(pop):
         new_indiv = []
         for layer in indiv:
             new_indiv.append(np.where(np.random.rand(*layer.shape) < MUTATION_PROB,
-                                      np.random.uniform(low=LOWER_BOUND,
-                                                        high=HIGHER_BOUND,
-                                                        size=layer.shape),
+                                      layer + np.random.normal(loc=0,
+                                                               scale=SCALE,
+                                                               size=layer.shape),
                                       layer))
         new_pop.append(new_indiv)
     return new_pop
@@ -112,7 +117,7 @@ def crossover(pop, cross_percentages):
     def swap_weights(p, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
             # choose a random layer (weights only)
-            l = random.randint(0, 2)
+            l = random.randint(0, N_WEIGHTS - 1)
             i = random.randint(0, p[i1_idx][l].shape[0] - 1)
             j = random.randint(0, p[i1_idx][l].shape[1] - 1)
             temp = p[i1_idx][l][i, j].copy()
@@ -122,7 +127,7 @@ def crossover(pop, cross_percentages):
     def swap_neurons(p, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
             # choose a random layer (weights and biases)
-            l = random.randint(0, 5)
+            l = random.randint(0, N_WEIGHTS + N_BIASES - 1)
             i = random.randint(0, p[i1_idx][l].shape[0] - 1)
             temp = p[i1_idx][l][i].copy()
             p[i1_idx][l][i] = p[i2_idx][l][i]
@@ -131,7 +136,7 @@ def crossover(pop, cross_percentages):
     def swap_layers(p, i1, i2):
         for i1_idx, i2_idx in zip(i1, i2):
             # choose a random layer (weights and biases)
-            l = random.randint(0, 5)
+            l = random.randint(0, N_WEIGHTS + N_BIASES - 1)
             temp = p[i1_idx][l].copy()
             p[i1_idx][l] = p[i2_idx][l]
             p[i2_idx][l] = temp
@@ -242,26 +247,17 @@ def generate_smart_population(x_train, y_train, load=False):
             for _ in range(POP_SIZE)]
 
 
-def generate_population():
+def generate_population(units=N_UNITS):
     return [[np.random.uniform(low=LOWER_BOUND,
                                high=HIGHER_BOUND,
-                               size=(784, 100)).astype('f'),
-             np.random.uniform(low=LOWER_BOUND,
+                               size=(units[i], units[i+1])).astype('f')
+            for i in range(len(units) - 1)]
+            +
+            [np.random.uniform(low=LOWER_BOUND,
                                high=HIGHER_BOUND,
-                               size=(100, 10)).astype('f'),
-             np.random.uniform(low=LOWER_BOUND,
-                               high=HIGHER_BOUND,
-                               size=(10, 10)).astype('f'),
-             np.random.uniform(low=LOWER_BOUND,
-                               high=HIGHER_BOUND,
-                               size=(100,)).astype('f'),
-             np.random.uniform(low=LOWER_BOUND,
-                               high=HIGHER_BOUND,
-                               size=(10,)).astype('f'),
-             np.random.uniform(low=LOWER_BOUND,
-                               high=HIGHER_BOUND,
-                               size=(10,)).astype('f')]
-            for _ in range(POP_SIZE)]
+                               size=(units[i+1],)).astype('f')
+            for i in range(len(units) - 1)]
+           for _ in range(POP_SIZE)]
 
 
 def main(use_back_prop=True, load=True):
@@ -292,7 +288,7 @@ def main(use_back_prop=True, load=True):
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
-        population = selection(population, fitness_values, elitism=True)
+        population = selection(population, fitness_values, elitism=False)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
@@ -309,4 +305,4 @@ def main(use_back_prop=True, load=True):
 
 
 if __name__ == '__main__':
-    main(use_back_prop=True, load=True)
+    main(use_back_prop=False, load=False)
