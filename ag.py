@@ -8,7 +8,6 @@ import gzip
 import pickle
 import random
 import time
-import copy
 
 from sklearn.metrics import log_loss
 from scipy.special import expit, softmax
@@ -17,7 +16,7 @@ from keras.models import Model, load_model
 from keras.layers import Input, Dense
 from keras.optimizers import Adam
 from keras.utils import to_categorical
-
+import copy
 
 NR_EPOCHS = 200
 POP_SIZE = 30
@@ -33,7 +32,7 @@ MUTATION_PROB = 0.1
 CROSSOVER_PROB = 0.6
 BATCH_SIZE = 256
 # 1 input, 1 hidden, 1 output = 3 layers
-N_UNITS = [784, 16, 10]
+N_UNITS = (784, 16, 10)
 N_WEIGHTS = len(N_UNITS) - 1
 N_BIASES = N_WEIGHTS
 
@@ -204,10 +203,8 @@ def selection(population, fitness_values, elitism=False):
         r = np.random.rand(POP_SIZE - ELITISM_NR)
         # Get insertion points through a left bisect algorithm.
         selected = np.searchsorted(cummulative_probabilities, r)
-        for idx in selected:
-            new_population.append(population[idx])
-        for idx in chosen_elitism_values:
-            new_population.append(population[idx])
+        new_population.extend([population[idx] for idx in selected])
+        new_population.extend([population[idx] for idx in chosen_elitism_values])
     return new_population
 
 
@@ -250,14 +247,14 @@ def generate_smart_population(x_train, y_train, load=False):
 def generate_population(units=N_UNITS):
     return [[np.random.uniform(low=LOWER_BOUND,
                                high=HIGHER_BOUND,
-                               size=(units[i], units[i+1])).astype('f')
-            for i in range(len(units) - 1)]
+                               size=(units[i], units[i + 1])).astype('f')
+             for i in range(len(units) - 1)]
             +
             [np.random.uniform(low=LOWER_BOUND,
                                high=HIGHER_BOUND,
-                               size=(units[i+1],)).astype('f')
-            for i in range(len(units) - 1)]
-           for _ in range(POP_SIZE)]
+                               size=(units[i + 1],)).astype('f')
+             for i in range(len(units) - 1)]
+            for _ in range(POP_SIZE)]
 
 
 def main(use_back_prop=True, load=True):
