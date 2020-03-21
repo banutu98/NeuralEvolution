@@ -98,7 +98,7 @@ def test_network(individual, x, y):
             z = np.dot(z, weights[i]) + biases[i]
             # expit may be better, although it's debatable.
             z = expit(z)
-        z = np.dot(z, weights[n_weights - 1] + biases[n_weights - 1])
+        z = np.dot(z, weights[n_weights - 1]) + biases[n_weights - 1]
         y_final = softmax(z)
         y_pred.append(y_final)
     y_pred = np.concatenate(y_pred)
@@ -245,7 +245,7 @@ def build_model():
 def generate_smart_population(x_train, y_train, load=False):
     if not load:
         model = build_model()
-        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
+        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=BATCH_SIZE, epochs=1)
         model.save('model.h5')
     else:
         if os.path.exists('model.h5'):
@@ -304,17 +304,16 @@ def main(use_back_prop=True, load=True):
         else:
             population = generate_smart_population(x_train, y_train, load=True)
 
-    fitness_values = fitness_network(population, x_train, y_train)
+    fitness_values = fitness_network(population, x_train, y_train, metric='acc')
     best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
-        if i % 10 == 0:
+        if i % 10 == 0 and i != 0:
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
         population = selection(population, fitness_values, elitism=True)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
-        fitness_values = fitness_network(population, x_train, y_train)
-        print(fitness_values)
+        fitness_values = fitness_network(population, x_train, y_train, metric='acc')
         new_best, new_best_individual = get_best_individual(population, fitness_values)
         print('Current best:', best)
         print('New best:', new_best)
