@@ -63,7 +63,7 @@ def fitness_network(population, x, y):
     for individual in population:
         weights = individual[:n_weights]
         biases = individual[n_weights:]
-        model.set_weights([weights[0], biases[0], weights[1], biases[1], weights[2], biases[2]])
+        model.set_weights([weights[0], biases[0], weights[1], biases[1]])  # , weights[2], biases[2]])
         loss, acc = model.evaluate(x, to_categorical(y), batch_size=BATCH_SIZE, use_multiprocessing=True, verbose=0)
         losses.append(1 / loss)
     return losses
@@ -74,7 +74,7 @@ def test_network(individual, x, y):
     weights = individual[:n_weights]
     biases = individual[n_weights:]
     model = build_model()
-    model.set_weights([weights[0], biases[0], weights[1], biases[1], weights[2], biases[2]])
+    model.set_weights([weights[0], biases[0], weights[1], biases[1]])  # , weights[2], biases[2]])
     loss, acc = model.evaluate(x, to_categorical(y), batch_size=BATCH_SIZE, use_multiprocessing=True, verbose=0)
     return acc
 
@@ -198,9 +198,9 @@ def get_best_individual(population, fitness_values):
 
 def build_model():
     input_layer = Input(shape=(784,))
-    dense_1 = Dense(100, activation='relu')(input_layer)
-    dense_2 = Dense(10, activation='relu')(dense_1)
-    pred = Dense(10, activation='softmax')(dense_2)
+    dense_1 = Dense(16, activation='relu')(input_layer)
+    # dense_2 = Dense(10, activation='relu')(dense_1)
+    pred = Dense(10, activation='softmax')(dense_1)
     model = Model(inputs=input_layer, outputs=pred)
     model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
     return model
@@ -295,4 +295,4 @@ def main(use_back_prop=True, use_elitism=True, load_saved_model=True, load_popul
 
 
 if __name__ == '__main__':
-    main(use_back_prop=True, use_elitism=False, load_saved_model=True, load_population=True)
+    main(use_back_prop=False, use_elitism=False, load_saved_model=True, load_population=True)
