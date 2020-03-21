@@ -304,16 +304,16 @@ def main(use_back_prop=True, load=True):
         else:
             population = generate_smart_population(x_train, y_train, load=True)
 
-    fitness_values = fitness_network(population, x_train, y_train, metric='acc')
+    fitness_values = fitness_network(population, x_train, y_train)
     best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
-        if i % 10 == 0 and i != 0:
+        if (i + 1) % 10 == 0:
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
         population = selection(population, fitness_values, elitism=True)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
-        fitness_values = fitness_network(population, x_train, y_train, metric='acc')
+        fitness_values = fitness_network(population, x_train, y_train)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
         print('Current best:', best)
         print('New best:', new_best)
@@ -328,4 +328,4 @@ def main(use_back_prop=True, load=True):
 
 
 if __name__ == '__main__':
-    main(use_back_prop=True, load=False)
+    main(use_back_prop=False, load=True)
