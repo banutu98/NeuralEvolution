@@ -19,7 +19,7 @@ from keras.utils import to_categorical
 import copy
 
 NR_EPOCHS = 200
-POP_SIZE = 30
+POP_SIZE = 200
 ELITISM_NR = 10
 HIGHER_BOUND = 1
 LOWER_BOUND = -1
@@ -28,7 +28,7 @@ LOWER_BOUND = -1
 SCALE = ((HIGHER_BOUND - LOWER_BOUND) / 2) / 2
 INTERVALS_NR = (HIGHER_BOUND - LOWER_BOUND) * 10 ** 4
 BITS_NR = math.ceil(np.log2(INTERVALS_NR))
-MUTATION_PROB = 0.1
+MUTATION_PROB = 0.01
 CROSSOVER_PROB = 0.6
 BATCH_SIZE = 256
 # 1 input, 1 hidden, 1 output = 3 layers
@@ -223,32 +223,42 @@ def get_best_individual(population, fitness_values):
     return best, best_individual
 
 
+def build_model():
+    input_layer = Input(shape=(784,))
+    dense_1 = Dense(16, activation='sigmoid')(input_layer)
+    # dense_2 = Dense(10, activation='sigmoid')(dense_1)
+    pred = Dense(10, activation='softmax')(dense_1)
+    model = Model(inputs=input_layer, outputs=pred)
+    model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
+    model.summary()
+    return model
+
+
 def generate_smart_population(x_train, y_train, load=False):
     if not load:
-        input_layer = Input(shape=(784,))
-        dense_1 = Dense(100, activation='sigmoid')(input_layer)
-        dense_2 = Dense(10, activation='sigmoid')(dense_1)
-        pred = Dense(10, activation='softmax')(dense_2)
-        model = Model(inputs=input_layer, outputs=pred)
-        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
-        model.summary()
+        model = build_model()
         model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
         model.save('model.h5')
-        loss, acc = model.evaluate(x_train, to_categorical(y_train))
     else:
-        model = load_model('model.h5')
-        loss, acc = model.evaluate(x_train, to_categorical(y_train))
+        if os.path.exists('model.h5'):
+            model = load_model('model.h5')
+        else:
+            model = build_model()
+            model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=BATCH_SIZE, epochs=1)
+            model.save('model.h5')
+
+    loss, acc = model.evaluate(x_train, to_categorical(y_train))
     print(f'Accuracy from the initial model: {acc}')
 
     first_layer_weights = model.layers[1].get_weights()[0]
     first_layer_biases = model.layers[1].get_weights()[1]
     second_layer_weights = model.layers[2].get_weights()[0]
     second_layer_biases = model.layers[2].get_weights()[1]
-    third_layer_weights = model.layers[3].get_weights()[0]
-    third_layer_biases = model.layers[3].get_weights()[1]
+    # third_layer_weights = model.layers[3].get_weights()[0]
+    # third_layer_biases = model.layers[3].get_weights()[1]
 
-    return [[np.copy(first_layer_weights), np.copy(second_layer_weights), np.copy(third_layer_weights),
-             np.copy(first_layer_biases), np.copy(second_layer_biases), np.copy(third_layer_biases)]
+    return [[np.copy(first_layer_weights), np.copy(second_layer_weights),
+             np.copy(first_layer_biases), np.copy(second_layer_biases)]
             for _ in range(POP_SIZE)]
 
 
@@ -293,7 +303,7 @@ def main(use_back_prop=True, load=True):
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
-        population = selection(population, fitness_values, elitism=False)
+        population = selection(population, fitness_values, elitism=True)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
@@ -310,4 +320,4 @@ def main(use_back_prop=True, load=True):
 
 
 if __name__ == '__main__':
-    main(use_back_prop=False, load=False)
+    main(use_back_prop=True, load=False)
