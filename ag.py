@@ -90,7 +90,7 @@ def test_network(individual, x, y):
             z = np.dot(z, weights[i]) + biases[i]
             # expit may be better, although it's debatable.
             z = expit(z)
-        z = np.dot(z, weights[n_weights - 1] + biases[n_weights] - 1)
+        z = np.dot(z, weights[n_weights - 1] + biases[n_weights - 1])
         y_final = softmax(z)
         y_pred.append(y_final)
     y_pred = np.concatenate(y_pred)
@@ -103,11 +103,19 @@ def mutate(pop):
     for indiv in pop:
         new_indiv = []
         for layer in indiv:
-            new_indiv.append(np.where(np.random.rand(*layer.shape) < MUTATION_PROB,
-                                      layer + np.random.normal(loc=0,
-                                                               scale=SCALE,
-                                                               size=layer.shape),
-                                      layer))
+            r = np.random.rand()
+            if r < 0.5:
+                new_indiv.append(np.where(np.random.rand(*layer.shape) < MUTATION_PROB,
+                                          layer + np.random.normal(loc=0,
+                                                                   scale=SCALE,
+                                                                   size=layer.shape),
+                                          layer))
+            else:
+                new_indiv.append(np.where(np.random.rand(*layer.shape) < MUTATION_PROB,
+                                          layer - np.random.normal(loc=0,
+                                                                   scale=SCALE,
+                                                                   size=layer.shape),
+                                          layer))
         new_pop.append(new_indiv)
     return new_pop
 
