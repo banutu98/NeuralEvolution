@@ -19,7 +19,7 @@ from keras.utils import to_categorical
 import copy
 
 NR_EPOCHS = 200
-POP_SIZE = 30
+POP_SIZE = 100
 ELITISM_NR = 10
 HIGHER_BOUND = 1
 LOWER_BOUND = -1
@@ -62,19 +62,10 @@ def fitness_network(population, x, y):
     for individual in population:
         weights = individual[:n_weights]
         biases = individual[n_weights:]
-        y_pred = list()
-        for start_idx in range(0, x.shape[0], BATCH_SIZE):
-            x_batch = x[start_idx:start_idx + BATCH_SIZE]
-            z = x_batch
-            for i in range(n_weights - 1):
-                z = np.dot(z, weights[i]) + biases[i]
-                # expit may be better, although it's debatable.
-                z = expit(z)
-            z = np.dot(z, weights[n_weights - 1]) + biases[n_weights - 1]
-            y_final = softmax(z)
-            y_pred.append(y_final)
-        y_pred = np.concatenate(y_pred)
-        losses.append(1 / np.exp(log_loss(y, y_pred)))
+        model = build_model()
+        model.set_weights([weights[0], biases[0], weights[1], biases[1], weights[2], biases[2]])
+        loss, acc = model.evaluate(x, to_categorical(y), batch_size=BATCH_SIZE, use_multiprocessing=True, verbose=0)
+        losses.append(loss)
     return losses
 
 
@@ -82,20 +73,10 @@ def test_network(individual, x, y):
     n_weights = len(individual) // 2
     weights = individual[:n_weights]
     biases = individual[n_weights:]
-    y_pred = list()
-    for start_idx in range(0, x.shape[0], BATCH_SIZE):
-        x_batch = x[start_idx:start_idx + BATCH_SIZE]
-        z = x_batch
-        for i in range(n_weights - 1):
-            z = np.dot(z, weights[i]) + biases[i]
-            # expit may be better, although it's debatable.
-            z = expit(z)
-        z = np.dot(z, weights[n_weights - 1] + biases[n_weights] - 1)
-        y_final = softmax(z)
-        y_pred.append(y_final)
-    y_pred = np.concatenate(y_pred)
-    y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
-    return np.sum(y_pred == y) / y.size
+    model = build_model()
+    model.set_weights([weights[0], biases[0], weights[1], biases[1], weights[2], biases[2]])
+    loss, acc = model.evaluate(x, to_categorical(y), batch_size=BATCH_SIZE, use_multiprocessing=True, verbose=0)
+    return acc
 
 
 def mutate(pop):
@@ -215,16 +196,21 @@ def get_best_individual(population, fitness_values):
     return best, best_individual
 
 
+def build_model():
+    input_layer = Input(shape=(784,))
+    dense_1 = Dense(100, activation='sigmoid')(input_layer)
+    dense_2 = Dense(10, activation='sigmoid')(dense_1)
+    pred = Dense(10, activation='softmax')(dense_2)
+    model = Model(inputs=input_layer, outputs=pred)
+    model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
+    return model
+
+
 def generate_smart_population(x_train, y_train, load=False):
     if not load:
-        input_layer = Input(shape=(784,))
-        dense_1 = Dense(100, activation='sigmoid')(input_layer)
-        dense_2 = Dense(10, activation='sigmoid')(dense_1)
-        pred = Dense(10, activation='softmax')(dense_2)
-        model = Model(inputs=input_layer, outputs=pred)
-        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
+        model = build_model()
         model.summary()
-        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=256, epochs=1)
+        model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=BATCH_SIZE, epochs=1)
         model.save('model.h5')
         loss, acc = model.evaluate(x_train, to_categorical(y_train))
     else:
@@ -285,6 +271,7 @@ def main(use_back_prop=True, load=True):
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
+        start_time = time.time()
         population = selection(population, fitness_values, elitism=False)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
@@ -296,10 +283,11 @@ def main(use_back_prop=True, load=True):
             best_individual = new_best_individual
             best_score = test_network(best_individual, x_train, y_train)
             print(f'The network achieved an accuracy of {best_score * 100} percent on training set!')
+        print(time.time() - start_time)
     best_score = test_network(best_individual, x_test, y_test)
     print(f'The network achieved an accuracy of {best_score * 100} percent on testing set!')
     print(f'Time taken: {time.time() - start_time} seconds!')
 
 
 if __name__ == '__main__':
-    main(use_back_prop=False, load=False)
+    main(use_back_prop=True, load=True)
