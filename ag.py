@@ -54,12 +54,16 @@ def softplus(x):
 # expit imported from scipy.special
 
 
-def fitness_network(population, x, y):
+def fitness_network(population, x, y, metric='log_loss'):
     losses = []
+    allowed_metrics = ['log_loss', 'acc']
     if not population:
         return []
-    n_weights = len(population[0]) // 2
-    for individual in population:
+    if metric not in allowed_metrics:
+        raise NotImplemented(f'{metric} not implemented. Allowed metrics: {allowed_metrics}')
+    pop = [population] if not isinstance(population, list) else population
+    n_weights = len(pop[0]) // 2
+    for individual in pop:
         weights = individual[:n_weights]
         biases = individual[n_weights:]
         y_pred = list()
@@ -74,7 +78,11 @@ def fitness_network(population, x, y):
             y_final = softmax(z)
             y_pred.append(y_final)
         y_pred = np.concatenate(y_pred)
-        losses.append(1 / np.exp(log_loss(y, y_pred)))
+        if metric == 'log_loss':
+            losses.append(1 / np.exp(log_loss(y, y_pred)))
+        else:
+            y_pred = np.apply_along_axis(np.argmax, 1, y_pred)
+            losses.append(np.sum(y_pred == y) / y.size)
     return losses
 
 
@@ -306,6 +314,7 @@ def main(use_back_prop=True, load=True):
         population = selection(population, fitness_values, elitism=True)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
+        print(fitness_values)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
         print('Current best:', best)
         print('New best:', new_best)
