@@ -19,7 +19,7 @@ from keras.utils import to_categorical
 import copy
 
 NR_EPOCHS = 200
-POP_SIZE = 100
+POP_SIZE = 30
 ELITISM_NR = 10
 HIGHER_BOUND = 1
 LOWER_BOUND = -1
@@ -30,7 +30,7 @@ INTERVALS_NR = (HIGHER_BOUND - LOWER_BOUND) * 10 ** 4
 BITS_NR = math.ceil(np.log2(INTERVALS_NR))
 MUTATION_PROB = 0.1
 CROSSOVER_PROB = 0.6
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 # 1 input, 1 hidden, 1 output = 3 layers
 N_UNITS = (784, 16, 10)
 N_WEIGHTS = len(N_UNITS) - 1
@@ -59,13 +59,13 @@ def fitness_network(population, x, y):
     if not population:
         return []
     n_weights = len(population[0]) // 2
+    model = build_model()
     for individual in population:
         weights = individual[:n_weights]
         biases = individual[n_weights:]
-        model = build_model()
         model.set_weights([weights[0], biases[0], weights[1], biases[1], weights[2], biases[2]])
         loss, acc = model.evaluate(x, to_categorical(y), batch_size=BATCH_SIZE, use_multiprocessing=True, verbose=0)
-        losses.append(loss)
+        losses.append(1 / loss)
     return losses
 
 
@@ -198,8 +198,8 @@ def get_best_individual(population, fitness_values):
 
 def build_model():
     input_layer = Input(shape=(784,))
-    dense_1 = Dense(100, activation='sigmoid')(input_layer)
-    dense_2 = Dense(10, activation='sigmoid')(dense_1)
+    dense_1 = Dense(100, activation='relu')(input_layer)
+    dense_2 = Dense(10, activation='relu')(dense_1)
     pred = Dense(10, activation='softmax')(dense_2)
     model = Model(inputs=input_layer, outputs=pred)
     model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['acc'])
@@ -212,10 +212,15 @@ def generate_smart_population(x_train, y_train, load=False):
         model.summary()
         model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=BATCH_SIZE, epochs=1)
         model.save('model.h5')
-        loss, acc = model.evaluate(x_train, to_categorical(y_train))
     else:
-        model = load_model('model.h5')
-        loss, acc = model.evaluate(x_train, to_categorical(y_train))
+        if os.path.exists('model.h5'):
+            model = load_model('model.h5')
+        else:
+            model = build_model()
+            model.summary()
+            model.fit(x_train, to_categorical(y_train, num_classes=10), batch_size=BATCH_SIZE, epochs=1)
+            model.save('model.h5')
+    loss, acc = model.evaluate(x_train, to_categorical(y_train))
     print(f'Accuracy from the initial model: {acc}')
 
     first_layer_weights = model.layers[1].get_weights()[0]
@@ -243,13 +248,13 @@ def generate_population(units=N_UNITS):
             for _ in range(POP_SIZE)]
 
 
-def main(use_back_prop=True, load=True):
+def main(use_back_prop=True, use_elitism=True, load_saved_model=True, load_population=True):
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
         train_set, _, test_set = pickle.load(f, encoding='latin1')
         x_train, y_train = train_set
         x_test, y_test = test_set
-    if load:
+    if load_population:
         if os.path.exists('population.pkl'):
             with open('population.pkl', 'rb') as f:
                 population = pickle.load(f)
@@ -257,22 +262,22 @@ def main(use_back_prop=True, load=True):
             if not use_back_prop:
                 population = generate_population()
             else:
-                population = generate_smart_population(x_train, y_train, load=True)
+                population = generate_smart_population(x_train, y_train, load=load_saved_model)
     else:
         if not use_back_prop:
             population = generate_population()
         else:
-            population = generate_smart_population(x_train, y_train, load=True)
+            population = generate_smart_population(x_train, y_train, load=load_saved_model)
 
     fitness_values = fitness_network(population, x_train, y_train)
     best, best_individual = get_best_individual(population, fitness_values)
     for i in range(NR_EPOCHS):
-        if i % 10 == 0:
+        if i % 10 == 0 and i != 0:
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
         start_time = time.time()
-        population = selection(population, fitness_values, elitism=False)
+        population = selection(population, fitness_values, elitism=use_elitism)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
@@ -290,4 +295,4 @@ def main(use_back_prop=True, load=True):
 
 
 if __name__ == '__main__':
-    main(use_back_prop=True, load=True)
+    main(use_back_prop=True, use_elitism=False, load_saved_model=True, load_population=True)
