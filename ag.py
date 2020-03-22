@@ -321,7 +321,9 @@ def main(use_back_prop=True, load=True):
             best = new_best
             best_individual = new_best_individual
             best_score = test_network(best_individual, x_train, y_train)
-            print(f'The network achieved an accuracy of {best_score * 100} percent on training set!')
+            print(f'Training accuracy: {best_score * 100}')
+            best_score = test_network(best_individual, x_test, y_test)
+            print(f'Testing accuracy: {best_score * 100}')
     best_score = test_network(best_individual, x_test, y_test)
     print(f'The network achieved an accuracy of {best_score * 100} percent on testing set!')
     print(f'Time taken: {time.time() - start_time} seconds!')
