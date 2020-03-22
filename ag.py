@@ -18,8 +18,8 @@ from keras.optimizers import Adam
 from keras.utils import to_categorical
 import copy
 
-NR_EPOCHS = 200
-POP_SIZE = 200
+NR_EPOCHS = 600
+POP_SIZE = 100
 ELITISM_NR = 10
 HIGHER_BOUND = 1
 LOWER_BOUND = -1
@@ -199,11 +199,27 @@ def upgrade(population, cross_percentages=(.3, .3, .4)):
     return new_population
 
 
-def selection(population, fitness_values, elitism=False):
+def selection(population, fitness_values, elitism=False, strategy='roulette', ranking='proportional', base=0.95):
     new_population = []
+    if ranking == 'proportional':
+        new_fitness = fitness_values
+    elif ranking == 'slots':
+        # Get permutation that sorts array in decreasing order
+        # (highest fitness first).
+        sorted_indices = np.argsort(fitness_values)[::-1]
+        # Get inverse permutation in order to bring array back
+        # to original order.
+        inverse_perm = np.argsort(sorted_indices)
+        # New fitness values take the form a^i, where i = 0..n-1.
+        # Fitness is assigned based on ranking.
+        new_fitness = base ** np.arange(sorted_indices.size)
+        # Sort back to original order using inverse permutation.
+        new_fitness = new_fitness[inverse_perm]
+        print(fitness_values)
+        print(new_fitness)
     # Compute cumulative distribution.
-    total_fitness = sum(fitness_values)
-    individual_probabilities = [fitness_val / total_fitness for fitness_val in fitness_values]
+    total_fitness = sum(new_fitness)
+    individual_probabilities = [fitness_val / total_fitness for fitness_val in new_fitness]
     cummulative_probabilities = np.cumsum(individual_probabilities)
     if not elitism:
         # Generate probabilities for new population.
@@ -283,7 +299,26 @@ def generate_population(units=N_UNITS):
             for _ in range(POP_SIZE)]
 
 
-def main(use_back_prop=True, load=True):
+def print_parameters(**kwargs):
+    print('PARAMETERS')
+    print('######################################')
+    print('Mutation rate:', MUTATION_PROB)
+    print('Crossover rate:', CROSSOVER_PROB)
+    print('Population size:', POP_SIZE)
+    print('Epochs:', NR_EPOCHS)
+    print('Layers:', N_UNITS)
+    print('Batch size:', BATCH_SIZE)
+    print('Scale:', SCALE)
+    print('Init interval:', f'({LOWER_BOUND}, {HIGHER_BOUND})')
+    print('Used elitism?', kwargs.get('elitism'))
+    print('Elitism number:', ELITISM_NR)
+    print('Backprop init?', kwargs.get('use_back_prop'))
+    print('######################################')
+
+
+def main(use_back_prop=True, load=True, elitism=True, ranking='proportional'):
+    parameters = locals()
+    print_parameters(**parameters)
     start_time = time.time()
     with gzip.open('mnist.pkl.gz', 'rb') as f:
         train_set, _, test_set = pickle.load(f, encoding='latin1')
@@ -297,12 +332,12 @@ def main(use_back_prop=True, load=True):
             if not use_back_prop:
                 population = generate_population()
             else:
-                population = generate_smart_population(x_train, y_train, load=True)
+                population = generate_smart_population(x_train, y_train, load=load)
     else:
         if not use_back_prop:
             population = generate_population()
         else:
-            population = generate_smart_population(x_train, y_train, load=True)
+            population = generate_smart_population(x_train, y_train, load=load)
 
     fitness_values = fitness_network(population, x_train, y_train)
     best, best_individual = get_best_individual(population, fitness_values)
@@ -311,7 +346,7 @@ def main(use_back_prop=True, load=True):
             with open('population.pkl', 'wb') as f:
                 pickle.dump(population, f)
         print(f'Current epoch: {i}')
-        population = selection(population, fitness_values, elitism=True)
+        population = selection(population, fitness_values, elitism=elitism, ranking=ranking)
         population = upgrade(population, cross_percentages=[.40, .55, .05])
         fitness_values = fitness_network(population, x_train, y_train)
         new_best, new_best_individual = get_best_individual(population, fitness_values)
@@ -330,4 +365,4 @@ def main(use_back_prop=True, load=True):
 
 
 if __name__ == '__main__':
-    main(use_back_prop=False, load=True)
+    main(use_back_prop=False, load=True, ranking='slots', elitism=True)
