@@ -18,7 +18,7 @@ from keras.optimizers import Adam
 from keras.utils import to_categorical
 import copy
 
-NR_EPOCHS = 600
+NR_EPOCHS = 500
 POP_SIZE = 100
 ELITISM_NR = 10
 HIGHER_BOUND = 1
@@ -38,7 +38,6 @@ N_BIASES = N_WEIGHTS
 
 
 # Activation functions
-# TODO: See which is more efficient
 def sigmoid(z):
     return np.divide(1, (1 + np.exp(-z)))
 
@@ -215,8 +214,8 @@ def selection(population, fitness_values, elitism=False, strategy='roulette', ra
         new_fitness = base ** np.arange(sorted_indices.size)
         # Sort back to original order using inverse permutation.
         new_fitness = new_fitness[inverse_perm]
-        print(fitness_values)
-        print(new_fitness)
+        # print(fitness_values)
+        # print(new_fitness)
     # Compute cumulative distribution.
     total_fitness = sum(new_fitness)
     individual_probabilities = [fitness_val / total_fitness for fitness_val in new_fitness]
@@ -316,7 +315,9 @@ def print_parameters(**kwargs):
     print('######################################')
 
 
-def main(use_back_prop=True, load=True, elitism=True, ranking='proportional'):
+def main(use_back_prop=True, load=True, elitism=True, ranking='proportional', mutation_prob=0.01):
+    global MUTATION_PROB
+    MUTATION_PROB = mutation_prob
     parameters = locals()
     print_parameters(**parameters)
     start_time = time.time()
@@ -365,4 +366,4 @@ def main(use_back_prop=True, load=True, elitism=True, ranking='proportional'):
 
 
 if __name__ == '__main__':
-    main(use_back_prop=False, load=True, ranking='slots', elitism=True)
+    main(use_back_prop=True, load=False, ranking='slots', elitism=True, mutation_prob=0.01)
