@@ -18,6 +18,7 @@ NN_TRAIN_EPOCHS = 5
 NN_TEST_EPOCHS = 10
 NN_BATCH_SIZE = 100
 G_BEST_PROB = 0.7
+LAYER_NAME_INC = 0
 
 
 class ParticleModel:
@@ -160,29 +161,40 @@ def check_for_similarity(g_best_diff, p_best_diff):
 
 
 def add_conv_layer(layers: list, input_layer=False):
+    global LAYER_NAME_INC
+    name = 'conv_' + str(LAYER_NAME_INC)
+    LAYER_NAME_INC += 1
     maps = np.random.randint(1, MAX_FEATURE_MAPS + 1)
     kernel_size = np.random.randint(3, MAX_KERNEL_SIZE + 1)
     if input_layer:
-        layers.append(Conv2D(maps, (kernel_size, kernel_size), padding='same', input_shape=(28, 28, 1)))
+        layers.append(Conv2D(maps, (kernel_size, kernel_size), padding='same', input_shape=(28, 28, 1), name=name))
     else:
-        layers.append(Conv2D(maps, (kernel_size, kernel_size), padding='same'))
+        layers.append(Conv2D(maps, (kernel_size, kernel_size), padding='same', name=name))
 
 
 def add_pool_layer(layers: list):
+    global LAYER_NAME_INC
+    name = 'pool_' + str(LAYER_NAME_INC)
+    LAYER_NAME_INC += 1
     pool_type = np.random.randint(1, 3)
     if pool_type == 1:
-        layers.append(MaxPooling2D(pool_size=(3, 3), strides=(2, 2)))
+        layers.append(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), name=name))
     else:
-        layers.append(AveragePooling2D(pool_size=(3, 3), strides=(2, 2)))
+        layers.append(AveragePooling2D(pool_size=(3, 3), strides=(2, 2), name=name))
 
 
 def add_fc_layer(layers: list, count=1, final_layer=False):
+    global LAYER_NAME_INC
+    name = 'fc_' + str(LAYER_NAME_INC)
+    LAYER_NAME_INC += 1
     if final_layer:
-        layers.append(Dense(OUTPUT_NEURONS, activation='softmax'))
+        layers.append(Dense(OUTPUT_NEURONS, activation='softmax', name=name))
     else:
         for _ in range(count):
             nr_neurons = np.random.randint(1, MAX_FC_NEURONS + 1)
-            layers.append(Dense(nr_neurons, activation='relu'))
+            layers.append(Dense(nr_neurons, activation='relu', name=name))
+            name = 'fc_' + str(LAYER_NAME_INC)
+            LAYER_NAME_INC += 1
 
 
 def init_swarm():
