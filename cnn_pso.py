@@ -7,7 +7,7 @@ from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
-SWARM_SIZE = 30
+SWARM_SIZE = 50
 MAX_LAYERS = 20
 MAX_FEATURE_MAPS = 4
 MAX_KERNEL_SIZE = 7
@@ -291,10 +291,9 @@ def main(load=False):
         with open('train_history.txt', 'a') as f:
             print(f'Iteration: {str(it)}', file=f)
             print(f'Best Loss: {str(g_best.loss)}', file=f)
-        if (it + 1) % 10 == 0:
-            with open('pso_checkpoint/particles.pkl', 'wb') as g, open('pso_checkpoint/best.pkl', 'wb') as h:
-                pkl.dump(particles, g)
-                pkl.dump(g_best, h)
+        with open('pso_checkpoint/particles.pkl', 'wb') as g, open('pso_checkpoint/best.pkl', 'wb') as h:
+            pkl.dump(particles, g)
+            pkl.dump(g_best, h)
         for value in particles:
             value.update_velocity(g_best)
             value.update_particle()
