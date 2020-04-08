@@ -14,7 +14,8 @@ MAX_KERNEL_SIZE = 7
 MAX_FC_NEURONS = 32
 OUTPUT_NEURONS = 10
 PSO_ITER = 100
-NN_TRAIN_EPOCHS = 10
+NN_TRAIN_EPOCHS = 5
+NN_TEST_EPOCHS = 10
 NN_BATCH_SIZE = 100
 G_BEST_PROB = 0.7
 
@@ -216,10 +217,12 @@ def init_swarm():
 def build_model(conv_layers: list, fc_layers: list) -> Sequential:
     model = Sequential()
     for layer in conv_layers:
-        model.add(layer)
+        layer_copy = type(layer).from_config(layer.get_config())
+        model.add(layer_copy)
     model.add(Flatten())
     for layer in fc_layers:
-        model.add(layer)
+        layer_copy = type(layer).from_config(layer.get_config())
+        model.add(layer_copy)
     model.compile(Adam(), loss='categorical_crossentropy', metrics=['acc'])
     model.summary()
     return model
@@ -238,7 +241,7 @@ def validate_saved_particle(file_path):
         particle = pkl.load(f)
 
     model = build_model(particle.conv_layers, particle.fc_layers)
-    model.fit(x_train, y_train, batch_size=NN_BATCH_SIZE, epochs=NN_TRAIN_EPOCHS)
+    model.fit(x_train, y_train, batch_size=NN_BATCH_SIZE, epochs=NN_TEST_EPOCHS)
 
     train_loss, train_acc = model.evaluate(x_train, y_train)
     test_loss, test_acc = model.evaluate(x_test, y_test)
@@ -255,20 +258,31 @@ def load_data():
     return x_train, y_train, x_test, y_test
 
 
-def main():
+def main(load=False):
     x_train, y_train, x_test, y_test = load_data()
-    swarm = init_swarm()
-    swarm[0].compute_loss((x_train, y_train), (x_test, y_test))
-    particles = [ParticleValue(swarm[0])]
-    g_best = particles[0].best_particle
-    for i in range(1, SWARM_SIZE):
-        swarm[i].compute_loss((x_train, y_train), (x_test, y_test))
-        particles.append(ParticleValue(swarm[i]))
-        if particles[-1].particle.loss < g_best.loss:
-            g_best = particles[-1].best_particle
+    if not load:
+        swarm = init_swarm()
+        swarm[0].compute_loss((x_train, y_train), (x_test, y_test))
+        particles = [ParticleValue(swarm[0])]
+        g_best = particles[0].best_particle
+        for i in range(1, SWARM_SIZE):
+            swarm[i].compute_loss((x_train, y_train), (x_test, y_test))
+            particles.append(ParticleValue(swarm[i]))
+            if particles[-1].particle.loss < g_best.loss:
+                g_best = particles[-1].best_particle
+    else:
+        with open('pso_checkpoint/particles.pkl', 'rb') as f, open('pso_checkpoint/best.pkl', 'rb') as g:
+            particles = pkl.load(f)
+            g_best = pkl.load(g)
 
     for it in range(PSO_ITER):
-        print(f'Iteration: {str(it)}')
+        with open('train_history.txt', 'a') as f:
+            print(f'Iteration: {str(it)}', file=f)
+            print(f'Best Loss: {str(g_best.loss)}', file=f)
+        if (it + 1) % 10 == 0:
+            with open('pso_checkpoint/particles.pkl', 'wb') as g, open('pso_checkpoint/best.pkl', 'wb') as h:
+                pkl.dump(particles, g)
+                pkl.dump(g_best, h)
         for value in particles:
             value.update_velocity(g_best)
             value.update_particle()
@@ -283,3 +297,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # validate_saved_particle('best_particle.pkl')
