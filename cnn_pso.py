@@ -6,6 +6,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D
 from keras.optimizers import Adam
 from keras.utils import to_categorical
+from keras.backend import clear_session
 
 SWARM_SIZE = 50
 MAX_LAYERS = 20
@@ -235,6 +236,7 @@ def build_model(conv_layers: list, fc_layers: list) -> Sequential:
         try:
             model.add(layer_copy)
         except ValueError:
+            clear_session()
             name = 'layer_' + str(LAYER_NAME_INC)
             LAYER_NAME_INC += 1
             config['name'] = name
@@ -247,6 +249,7 @@ def build_model(conv_layers: list, fc_layers: list) -> Sequential:
         try:
             model.add(layer_copy)
         except ValueError:
+            clear_session()
             name = 'layer_' + str(LAYER_NAME_INC)
             LAYER_NAME_INC += 1
             config['name'] = name
@@ -329,5 +332,5 @@ def main(load=False):
 
 
 if __name__ == '__main__':
-    main()
-    # validate_saved_particle('pso_checkpoint/best.pkl')
+    main(load=True)
+    # validate_saved_particle('pso_checkpoint/best_particle.pkl')
