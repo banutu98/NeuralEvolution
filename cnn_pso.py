@@ -6,16 +6,15 @@ from keras.models import Sequential
 from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D
 from keras.optimizers import Adam
 from keras.utils import to_categorical
-from keras.backend import clear_session
 
-SWARM_SIZE = 50
+SWARM_SIZE = 30
 MAX_LAYERS = 20
 MAX_FEATURE_MAPS = 4
 MAX_KERNEL_SIZE = 7
 MAX_FC_NEURONS = 32
 OUTPUT_NEURONS = 10
-PSO_ITER = 100
-NN_TRAIN_EPOCHS = 5
+PSO_ITER = 25
+NN_TRAIN_EPOCHS = 10
 NN_TEST_EPOCHS = 10
 NN_BATCH_SIZE = 100
 G_BEST_PROB = 0.7
@@ -233,28 +232,12 @@ def build_model(conv_layers: list, fc_layers: list) -> Sequential:
     for layer in conv_layers:
         config = layer.get_config()
         layer_copy = type(layer).from_config(config)
-        try:
-            model.add(layer_copy)
-        except ValueError:
-            clear_session()
-            name = 'layer_' + str(LAYER_NAME_INC)
-            LAYER_NAME_INC += 1
-            config['name'] = name
-            layer_copy = type(layer).from_config(config)
-            model.add(layer_copy)
+        model.add(layer_copy)
     model.add(Flatten())
     for layer in fc_layers:
         config = layer.get_config()
         layer_copy = type(layer).from_config(config)
-        try:
-            model.add(layer_copy)
-        except ValueError:
-            clear_session()
-            name = 'layer_' + str(LAYER_NAME_INC)
-            LAYER_NAME_INC += 1
-            config['name'] = name
-            layer_copy = type(layer).from_config(config)
-            model.add(layer_copy)
+        model.add(layer_copy)
     model.compile(Adam(), loss='categorical_crossentropy', metrics=['acc'])
     model.summary()
     return model
@@ -332,5 +315,5 @@ def main(load=False):
 
 
 if __name__ == '__main__':
-    main(load=True)
+    main()
     # validate_saved_particle('pso_checkpoint/best_particle.pkl')
