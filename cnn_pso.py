@@ -227,14 +227,31 @@ def init_swarm():
 
 
 def build_model(conv_layers: list, fc_layers: list) -> Sequential:
+    global LAYER_NAME_INC
     model = Sequential()
     for layer in conv_layers:
-        layer_copy = type(layer).from_config(layer.get_config())
-        model.add(layer_copy)
+        config = layer.get_config()
+        layer_copy = type(layer).from_config(config)
+        try:
+            model.add(layer_copy)
+        except ValueError:
+            name = 'layer_' + str(LAYER_NAME_INC)
+            LAYER_NAME_INC += 1
+            config['name'] = name
+            layer_copy = type(layer).from_config(config)
+            model.add(layer_copy)
     model.add(Flatten())
     for layer in fc_layers:
-        layer_copy = type(layer).from_config(layer.get_config())
-        model.add(layer_copy)
+        config = layer.get_config()
+        layer_copy = type(layer).from_config(config)
+        try:
+            model.add(layer_copy)
+        except ValueError:
+            name = 'layer_' + str(LAYER_NAME_INC)
+            LAYER_NAME_INC += 1
+            config['name'] = name
+            layer_copy = type(layer).from_config(config)
+            model.add(layer_copy)
     model.compile(Adam(), loss='categorical_crossentropy', metrics=['acc'])
     model.summary()
     return model
@@ -271,6 +288,7 @@ def load_data():
 
 
 def main(load=False):
+    global LAYER_NAME_INC
     x_train, y_train, x_test, y_test = load_data()
     if not load:
         swarm = init_swarm()
@@ -283,17 +301,21 @@ def main(load=False):
             if particles[-1].particle.loss < g_best.loss:
                 g_best = particles[-1].best_particle
     else:
-        with open('pso_checkpoint/particles.pkl', 'rb') as f, open('pso_checkpoint/best.pkl', 'rb') as g:
+        with open('pso_checkpoint/particles.pkl', 'rb') as f, open('pso_checkpoint/best_particle.pkl', 'rb') as g, \
+                open('pso_checkpoint/global_inc.pkl', 'rb') as r:
             particles = pkl.load(f)
             g_best = pkl.load(g)
+            LAYER_NAME_INC = pkl.load(r)
 
     for it in range(PSO_ITER):
         with open('train_history.txt', 'a') as f:
             print(f'Iteration: {str(it)}', file=f)
             print(f'Best Loss: {str(g_best.loss)}', file=f)
-        with open('pso_checkpoint/particles.pkl', 'wb') as g, open('pso_checkpoint/best.pkl', 'wb') as h:
+        with open('pso_checkpoint/particles.pkl', 'wb') as g, open('pso_checkpoint/best_particle.pkl', 'wb') as h, \
+                open('pso_checkpoint/global_inc.pkl', 'wb') as r:
             pkl.dump(particles, g)
             pkl.dump(g_best, h)
+            pkl.dump(LAYER_NAME_INC, r)
         for value in particles:
             value.update_velocity(g_best)
             value.update_particle()
@@ -308,4 +330,4 @@ def main(load=False):
 
 if __name__ == '__main__':
     main()
-    # validate_saved_particle('best_particle.pkl')
+    # validate_saved_particle('pso_checkpoint/best.pkl')
