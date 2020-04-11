@@ -3,18 +3,18 @@ import numpy as np
 
 from keras.datasets import mnist
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D
+from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D, BatchNormalization
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
-SWARM_SIZE = 30
+SWARM_SIZE = 70
 MAX_LAYERS = 20
 MAX_FEATURE_MAPS = 4
 MAX_KERNEL_SIZE = 7
 MAX_FC_NEURONS = 32
 OUTPUT_NEURONS = 10
 PSO_ITER = 25
-NN_TRAIN_EPOCHS = 10
+NN_TRAIN_EPOCHS = 5
 NN_TEST_EPOCHS = 10
 NN_BATCH_SIZE = 100
 G_BEST_PROB = 0.7
@@ -233,6 +233,8 @@ def build_model(conv_layers: list, fc_layers: list) -> Sequential:
         config = layer.get_config()
         layer_copy = type(layer).from_config(config)
         model.add(layer_copy)
+        if type(layer) is Conv2D:
+            model.add(BatchNormalization())
     model.add(Flatten())
     for layer in fc_layers:
         config = layer.get_config()
