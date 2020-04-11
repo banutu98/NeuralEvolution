@@ -7,7 +7,7 @@ from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D,
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
-SWARM_SIZE = 70
+SWARM_SIZE = 50
 MAX_LAYERS = 20
 MAX_FEATURE_MAPS = 4
 MAX_KERNEL_SIZE = 7
