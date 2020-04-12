@@ -1,0 +1,50 @@
+Iteration: 0
+Best Loss: 0.08556093036779203
+Iteration: 1
+Best Loss: 0.08556093036779203
+Iteration: 2
+Best Loss: 0.08461267275502905
+Iteration: 3
+Best Loss: 0.07445086052408442
+Iteration: 4
+Best Loss: 0.05574311893389677
+Iteration: 5
+Best Loss: 0.05574311893389677
+Iteration: 6
+Best Loss: 0.05574311893389677
+Iteration: 7
+Best Loss: 0.052721728974138383
+Iteration: 8
+Best Loss: 0.052721728974138383
+Iteration: 9
+Best Loss: 0.052721728974138383
+Iteration: 10
+Best Loss: 0.052721728974138383
+Iteration: 11
+Best Loss: 0.052721728974138383
+Iteration: 12
+Best Loss: 0.052721728974138383
+Iteration: 13
+Best Loss: 0.048278821553831223
+Iteration: 14
+Best Loss: 0.048278821553831223
+Iteration: 15
+Best Loss: 0.048278821553831223
+Iteration: 16
+Best Loss: 0.048278821553831223
+Iteration: 17
+Best Loss: 0.048278821553831223
+Iteration: 18
+Best Loss: 0.048278821553831223
+Iteration: 19
+Best Loss: 0.048278821553831223
+Iteration: 20
+Best Loss: 0.048278821553831223
+Iteration: 21
+Best Loss: 0.048278821553831223
+Iteration: 22
+Best Loss: 0.048278821553831223
+Iteration: 23
+Best Loss: 0.048278821553831223
+Iteration: 24
+Best Loss: 0.04733844307455001
